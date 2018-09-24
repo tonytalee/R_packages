@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1529308831734.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1662328600",
+    "id" : "1DA34F3A",
+    "lastKnownWriteTime" : 1535469133,
+    "last_content_update" : 1535469133978,
+    "path" : "~/OneDrive/WorkDrive/R/Packages/setGplot/R/ggplot_setting.R",
+    "project_path" : "R/ggplot_setting.R",
+    "properties" : {
+        "cursorPosition" : "45,33",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

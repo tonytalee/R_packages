@@ -1,0 +1,12 @@
+Package: ProcessCapability
+Type: Package
+Title: Calculate and plot process capability
+Version: 0.1.1
+Author: Tony Lee
+Maintainer: The package maintainer <yourself@somewhere.net>
+Description: Calculate Cp, Cpk, ... and plot Q-Q plot and histogram with normal curves
+License: GPL-2
+Encoding: UTF-8
+LazyData: true
+Import: ggplot2 (>= 2.2.1), plotly(>= 4.8.0)
+RoxygenNote: 6.1.0

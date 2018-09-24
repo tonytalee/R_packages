@@ -1,0 +1,12 @@
+Package: setPlotly
+Type: Package
+Title: Functions to set plotly plots for scatter, box/violin, bar and pareto
+Version: 0.1.0
+Author: Tony Lee
+Maintainer: The package maintainer <yourself@somewhere.net>
+Description: Do typical setting on plotly plots
+License: GPL-2
+Encoding: UTF-8
+LazyData: true
+Import: plotly (>= 4.8.0)
+RoxygenNote: 6.1.0
