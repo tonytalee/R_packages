@@ -1,16 +1,21 @@
-# v0.1.1
+# v0.1.4
+# QQ plot add option of ggplot and plotly
 
 # * Function to calculate process capability index -----
 #' @title Calculate index for process capability, i.e. Cp, Cpk, Pp, Ppk...
-#' @param x numeric vector for calculating process capability index
-#' @param subgroup vector with the same length of x to label the subgroup
+#' @param data numeric vector for calculating process capability index
+#' @param group vector with the same length of data to form group for within and
+#'        between group
 #' @param USL upper specification limit
 #' @param targt spec target
 #' @param LSL lower specification limit
+#' @return list contains: sample_size, sample_mean, StDev_overall,
+#'         StDev_within (within-group), Cp, Cpk, CpkU, CpkL, Pp, Ppk, PpkU, PpkL,
+#'         ppm_within, ppm_overall, ppm_obs
 #' @export
-fun_Cp <- function(x,  subgroup= 1, USL = NULL, target = NULL, LSL = NULL) {
+fun_Cp <- function(data,  group= 1, USL = NULL, target = NULL, LSL = NULL) {
 
-    df <- data.frame(subgroup = subgroup, value = x)
+    df <- data.frame(group = group, value = data)
     df <- df[! is.na(df$value), ]
 
     # d2
@@ -21,11 +26,11 @@ fun_Cp <- function(x,  subgroup= 1, USL = NULL, target = NULL, LSL = NULL) {
     sample_mean <- round(mean(df$value), 3)
     StDev_overall <- round(sd(df$value), 3)
 
-    # within subgroup analysis
-    no_subgroup <- unique(subgroup)
-    if (length(no_subgroup) >= 2) {
+    # within group analysis
+    no_groups <- unique(group)
+    if (length(no_groups) >= 2) {
         df1 <- df %>%
-            group_by(subgroup) %>%
+            group_by(group) %>%
             summarise(count = n(),
                       range = max(value) - min(value),
                       sd = sd(value))
@@ -115,13 +120,13 @@ fun_Cp <- function(x,  subgroup= 1, USL = NULL, target = NULL, LSL = NULL) {
 
 # * Functions for plot -----
 #' @title  return a dataframe with x, y coordinates for plotting QQ line
-QQ_points <- function(x, distribution = "norm", dparams = list(), qprobs = c(.25, .75),
+QQ_points <- function(data, distribution = "norm", dparams = list(), qprobs = c(.25, .75),
                       detrend, identity, qtype) {
     # distributional function
     qFunc <- eval(parse(text = paste0("q", distribution)))
 
-    oidx <- order(x)
-    smp <- x[oidx]
+    oidx <- order(data)
+    smp <- data[oidx]
     n <- length(smp)
     quantiles <- ppoints(n)
 
@@ -197,20 +202,19 @@ QQ_points <- function(x, distribution = "norm", dparams = list(), qprobs = c(.25
             dSmp[i] <- smp[i] - lSmp
         }
 
-        out <- data.frame(sample = dSmp, theoretical = theoretical)
+        out <- data.frame(sample = dSmp, theoretical = theoretical, order= oidx)
     } else {
-        out <- data.frame(sample = smp, theoretical = theoretical)
+        out <- data.frame(sample = smp, theoretical = theoretical, order= oidx)
     }
-
 }
 
 #' @title  return a dataframe with x, y coordinates for plotting QQ line
-QQ_line <- function(x, distribution = "norm", dparams = list(), qprobs = c(.25, .75),
+QQ_line <- function(data, distribution = "norm", dparams = list(), qprobs = c(.25, .75),
                     detrend, identity, qtype) {
     # distributional function
     qFunc <- eval(parse(text = paste0("q", distribution)))
 
-    smp <- sort(x)
+    smp <- sort(data)
     n <- length(smp)
     quantiles <- ppoints(n)
 
@@ -285,23 +289,42 @@ QQ_line <- function(x, distribution = "norm", dparams = list(), qprobs = c(.25, 
         out <- data.frame(xx = c(min(theoretical), max(theoretical)))
         out$yy <- slope * out$xx + intercept
     }
-
     out
 }
 
 #' @title Plot Q-Q plot by plotly
-#' @param x vector of data to plot QQ
+#' @param data vector of data to plot QQ
+#' @param group vector with the same length as data, to group data
+#' @param dist character, theorectical distribution function to use,
+#'        e.g. "norm", "binom", "pois"... (refer more to package 'qqplotr')
+#' @param dparams list of additional parameters passed on to the previous chosen
+#'        distribution funcion.
 #' @param df_info dataframe of information shown on hover
-#' @param info_names character vector to replace names(info) to show on hover
+#' @param info_names character vector with the same length as data,
+#'        to replace names(info) to show on hover. It doesn't include x-variable and
+#'        y-varialbe. xlab and ylab will be used for x-variable and y-variable.
 #' @param title plot title
 #' @param xlab x-axis label
 #' @param ylab y-axis label
 #' @param qprobs numeric vector with length 2. Rrepresents the quantitles used to
-#' \construct the Q-Q line
+#'        construct the Q-Q line
+#' @param detrend logic, should the plot objexts be detrended?
+#' @param identity logic, should an identity line be used as the reference line used to
+#'        construct the confidence bands?
+#' @param qtype interger between 1 and 9, Type of quantile algorithm to be used by
+#'        the quantile function to construct the Q-Q line.
+#' @param colors colors set
+#' @param plotly logic, TRUE for plotly, FALSE for ggplot
 #' @export
-QQ_plot <- function(x, dist= "norm", dparams= list(), df_info= NULL, info_names= NULL,
-                    title= "", xlab= "Theoretical", ylab= "Sample", qprobs = c(.25, .75),
-                    detrend = FALSE, identity= FALSE, qtype= 7) {
+QQ_plot <- function(data, group= 1,  dist= "norm", dparams= list(), df_info= NULL,
+                    info_names= NULL, title= "Q-Q Plot", xlab= "Theoretical",
+                    ylab= "Sample", qprobs = c(.25, .75), detrend = FALSE,
+                    identity= FALSE, qtype= 7, colors= color_set4, plotly= TRUE) {
+    # if df_infor is vector
+    if (is.vector(df_info)) df_info <- data_frame(info= df_info)
+
+    # remove NA
+    data <- data[! is.na(data)]
     # error handling
     if (!(dist %in% c(
         "beta", "cauchy", "chisq", "exp", "f", "gamma", "geom",  "lnorm", "logis",
@@ -331,71 +354,148 @@ QQ_plot <- function(x, dist= "norm", dparams= list(), df_info= NULL, info_names=
              call = FALSE)
     }
 
-    #... QQ points ...
-    # Calculate distribution data
-    qq_point <- QQ_points(x, distribution = dist, dparams = dparams, qprobs = qprobs,
-                          detrend = detrend, identity = identity,  qtype = qtype)
+    # match levels of colors to groups
+    groups <- unique(group)
 
-    df <- data.frame(x= qq_point$theoretical, y= qq_point$sample)
-
-    #... QQ lint ...
-    qq_line <- QQ_line(x, distribution = dist, dparams = dparams, qprobs = qprobs,
-                       detrend = detrend, identity = identity,  qtype = qtype)
-
-    #--- coordinates limits
-    xmi <- min(df$x, na.rm = T)
-    xma <-  max(df$x, na.rm = T)
-    rg <- (xma - xmi) * 0.1
-    xmin= xmi - rg
-    xmax = xma + rg
-
-    ymi <- min(df$y, na.rm = T)
-    yma <-  max(df$y, na.rm = T)
-    rg <- (yma - ymi) * 0.1
-    ymin= ymi - rg
-    ymax = yma + rg
-
-    #--- Hover text information
-    if (! is.null(df_info)) {
-        df <- cbind(df, df_info)
-        if (is.null(info_names)) info_names <- names(df_info)
-        info_names <- c("theoretical", "sample", info_names)
-    } else {
-        info_names <- c("theoretical", "sample")
+    if (length(groups) > length(colors)) {
+        n <- ceiling(length(groups) / length(colors))
+        colors <- rep(colors, n)
     }
-    df <- df %>% filter(!is.na(y))
-    df$x <- round(df$x, 3)
-    df$y <- round(df$y, 3)
-    hText <- apply(df, 1, function(x) paste(info_names, x, sep= ": "))
-    hText <- apply(hText, 2, function(x) paste(x, collapse = " <br> "))
 
+    # QQ points and QQ lines
+    if (! is.null(df_info)) df_info_c <- data.frame()
+    df <- data.frame()
+    qqlines <- list()
+    for (gp in groups) {
+        x1 <- data[group == gp]
+        df_info1 <- df_info[group == gp, ]
+
+        qq_point <- QQ_points(x1, distribution = dist, dparams = dparams, qprobs = qprobs,
+                          detrend = detrend, identity = identity,  qtype = qtype)
+        # ordering if_info
+        if (! is.null(df_info)) {
+            df_info1 <- df_info1[qq_point$order, ]
+            df_info_c <- rbind(df_info_c, df_info1)
+        }
+
+        # form dataframe for qq points
+        df1 <- data.frame(x= qq_point$theoretical, y= qq_point$sample, group= gp)
+        df <- rbind(df, df1)
+
+        # form list for qq lines
+        qqline <- QQ_line(x1, distribution = dist, dparams = dparams, qprobs = qprobs,
+                   detrend = detrend, identity = identity,  qtype = qtype)
+        qqlines[[gp]] <- qqline
+    }
+    group <- df$group
+    df$group <- NULL
 
     #--- Plot
-    plot_ly(x= qq_line$xx, y = qq_line$yy, type = 'scatter', mode = 'lines',
-            color = I("#708090"), hoverinfo= "skip") %>%
-        add_markers(data= df, x= ~x, y= ~y, color = I("steelblue"), hoverinfo= "text",
-                    text= hText) %>%
-        plotly::layout(showlegend= FALSE, title= title,
+    if (plotly) {
+        #--- coordinates limits
+        xmi <- min(df$x, na.rm = T)
+        xma <-  max(df$x, na.rm = T)
+        rg <- (xma - xmi) * 0.2
+        xmin= xmi - rg
+        xmax = xma + rg
+
+        ymi <- min(df$y, na.rm = T)
+        yma <-  max(df$y, na.rm = T)
+        rg <- (yma - ymi) * 0.2
+        ymin= ymi - rg
+        ymax = yma + rg
+
+        #--- Hover text information
+        if (! is.null(df_info)) {
+            df <- cbind(df, df_info_c)
+            if (is.null(info_names)) info_names <- names(df_info)
+            info_names <- c(xlab, ylab, info_names)
+        } else {
+            info_names <- c(xlab, ylab)
+        }
+        df <- df %>% filter(!is.na(y))
+        df$x <- round(df$x, 3)
+        df$y <- round(df$y, 3)
+        hText <- apply(df, 1, function(x) paste(info_names, x, sep= ": "))
+        hText <- apply(hText, 2, function(x) paste(x, collapse = " <br> "))
+
+        #--- Plotly
+        if (length(groups) == 1) {
+            p <- plot_ly(data= df, x= ~x, y= ~y,  type = 'scatter', mode = 'markers',
+                     color= I(colors[1]), hoverinfo= "text", text= hText)
+            legendx= FALSE
+        } else {
+            p <- plot_ly(data= df, x= ~x, y= ~y,  type = 'scatter', mode = 'markers',
+                     color = ~group, colors = colors, hoverinfo= "text", text= hText)
+            legendx= TRUE
+        }
+        for (i in 1:length(groups)) {
+            qq_line <- qqlines[[i]]
+            p <- p %>%
+                add_segments(x= qq_line$xx[1], xend= qq_line$xx[2],
+                             y= qq_line$yy[1], yend= qq_line$yy[2],
+                             color= I(colors[i]), showlegend= FALSE)
+        }
+        p %>%
+            plotly::layout(showlegend= legendx, title= title,
                        xaxis= list(title= xlab, zeroline= FALSE, range= c(xmin, xmax)),
                        yaxis= list(title= ylab, zeroline= FALSE, range= c(ymin, ymax)))
+    } else {
+        df$group <- group
+
+        if (length(groups) == 1) {
+            slope <- diff(qq_line$yy)/diff(qq_line$xx)
+            int <- qq_line$yy[1L] - slope * qq_line$xx[1L]
+
+            p <- ggplot(df, aes(x= x, y= y)) +
+                geom_point(color= "steelblue4", alpha= 0.7, size= 2) +
+                geom_abline(slope = slope, intercept = int, color= "#708090")
+        } else {
+            p <- ggplot(df, aes(x= x, y= y, color= group, group= group)) +
+                geom_point(alpha = 0.7, size= 2)
+
+            for (i in 1:length(groups)) {
+                qq_line <- qqlines[[i]]
+                slope <- diff(qq_line$yy)/diff(qq_line$xx)
+                int <- qq_line$yy[1L] - slope * qq_line$xx[1L]
+                qq_line <- qqlines[[i]]
+                p <- p + geom_abline(slope = slope, intercept = int, color= colors[i])
+            }
+        }
+        p + labs(title= title, x= xlab, y= ylab) +
+            scale_color_manual(values = colors) +
+            theme(plot.title = element_text(size= 14, hjust = 0.5, vjust = 1),
+                  plot.background = element_rect(colour = NA, fill = NA),
+                  panel.background = element_rect(fill = "white", colour = NA),
+                  panel.border = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  axis.title = element_text(size = 10),
+                  axis.text = element_text(size = 10),
+                  axis.ticks = element_blank())
+    }
 }
 
 # * Plot histogram for process capability -----
 #' @title Plot histogram for process capability
-#' @param x vector of data to plot histogram
-#' @param mean numeric, if NUll will be count by x
-#' @param StDev_overall numeric, if NUll will be count by x
-#' @param StDev_within numeric, if NUll will be count by x
-#' @param plot_spec c(USL= 1, target= 0, LSL= -1)
+#' @param data vector of data to plot histogram
+#' @param mean numeric, if NUll will be count by data
+#' @param StDev_overall numeric, if NUll will be count by data
+#' @param StDev_within numeric, if NUll will be count by data
+#' @param plot_spec vector with three elements, c(USL= 1, target= 0, LSL= -1)
 #' @param title plot title
+#' @param xlab x label
+#' @param ylab y label
+#' @param bar_fill bar filling color
+#' @return histogram
 #' @export
-Plot_hist_norm <- function(x, mean= NULL, StDev_overall= NULL,
+Plot_hist_norm <- function(data, mean= NULL, StDev_overall= NULL,
                            StDev_within= NULL, plot_spec= NULL,
-                           title= "Sample Distribution", xlab= "", ylab= "") {
+                           title= "Sample Distribution", xlab= "", ylab= "",
+                           bar_fill= "#36648B") {
     # plot_spec: named vector contains USL, target and LSL
 
-    if (is.null(mean)) {mean <- mean(x, na.rm = T)}
-    if (is.null(StDev_overall)) {StDev_overall <- sd(x, na.rm = T)}
+    if (is.null(mean)) {mean <- mean(data, na.rm = T)}
+    if (is.null(StDev_overall)) {StDev_overall <- sd(data, na.rm = T)}
     if (! is.na(StDev_overall)) {
         p <- ggplot(data.frame(x=c(mean-4*StDev_overall, mean+4*StDev_overall)), aes(x=x))
     } else {
@@ -406,9 +506,9 @@ Plot_hist_norm <- function(x, mean= NULL, StDev_overall= NULL,
         }
     }
 
-    p <- p + geom_histogram(data=data.frame(x= x),
+    p <- p + geom_histogram(data=data.frame(x= data),
                             aes(x=x, y = ..density..), bins =30,
-                            color="white", fill="#9FB6CD")
+                            color="white", fill= bar_fill)
     if (! is.na(StDev_overall)) {
         p <- p + stat_function(fun = dnorm, color="#4682B4",
                                args = list(mean =  mean, sd = StDev_overall),
@@ -424,10 +524,12 @@ Plot_hist_norm <- function(x, mean= NULL, StDev_overall= NULL,
     p <- p + geom_hline(yintercept = 0, color= "slategrey") +
         labs(title= title, x= xlab, y= ylab) +
         coord_cartesian(expand = FALSE) +
-        theme(plot.title = element_text(size= 18, hjust = 0.5, vjust = 1),
+        theme(plot.title = element_text(size= 16, hjust = 0.5, vjust = 1),
               panel.grid = element_blank(),
               panel.background = element_rect(fill = "white", colour = NA),
-              axis.text.x = element_text(size = 14),
+              panel.border = element_blank(),
+              axis.title = element_text(size = 12),
+              axis.text.x = element_text(size = 12),
               axis.text.y = element_blank(),
               axis.ticks.y = element_blank())
 
@@ -452,19 +554,31 @@ Plot_hist_norm <- function(x, mean= NULL, StDev_overall= NULL,
 
 # Plot attribute histogram
 #' @title Plot histogram for process capability
-#' @param plot_spec c(USL= 1, target= 0, LSL= -1)
+#' @param data vector of data to plot histogram
+#' @param plot_spec vector with three elements, c(USL= 1, target= 0, LSL= -1)
 #' @param title plot title
+#' @param xlab x label
+#' @param ylab y label
+#' @param bar_fill bar filling color
+#' @return histogram
 #' @export
-Plot_hist_attr <- function(x, plot_spec= NULL, title= "Sample Distribution",
-                           xlab= "", ylab= "") {
-    bins <- round(max(x) - min(x)) + 1
+Plot_hist_attr <- function(data, plot_spec= NULL, title= "Sample Distribution",
+                           xlab= "", ylab= "", bar_fill= "#36648B") {
+    bins <- round(max(data) - min(data)) + 1
     bins <- ifelse(bins >= 30, 30, bins)
-    p <- ggplot(data.frame(x= x), aes(x= x)) +
-        geom_histogram(bins = bins, color= "white", fill= "#9FB6CD") +
+    p <- ggplot(data.frame(x= data), aes(x= x)) +
+        geom_histogram(bins = bins, color= "white", fill= bar_fill) +
         geom_hline(yintercept = 0, color= "slategrey") +
         labs(title= title, x= xlab, y= ylab) +
         coord_cartesian(expand = FALSE) +
-        theme_min(base_size = 16, xGrid_major = FALSE, border_color= NA)
+        theme(plot.title = element_text(size= 16, hjust = 0.5, vjust = 1),
+              panel.grid = element_blank(),
+              panel.background = element_rect(fill = "white", colour = NA),
+              panel.border = element_blank(),
+              axis.title = element_text(size = 12),
+              axis.text.x = element_text(size = 12),
+              axis.text.y = element_blank(),
+              axis.ticks.y = element_blank())
 
     if (!is.null(plot_spec)) {
         if (! is.na( plot_spec["target"])) {
@@ -488,19 +602,26 @@ Plot_hist_attr <- function(x, plot_spec= NULL, title= "Sample Distribution",
 
 # * Functionn to plot process capability analysis -----
 #' @title Normal process capability analysis
-#' @param x numeric vector
-#' @param subgroup vector with the same length of x to label the subgroup
-#' @param USL
-#' @param target
-#' @param LSL
+#' @param data numeric vector
+#' @param group vector with the same length of data to form group for within and
+#'        between group
+#' @param USL upper specification limit of process
+#' @param target  target (center) of process
+#' @param LSL lower specification limit of process
+#' @param df_info dataframe of information shown on hover
+#' @param info_names character vector with the same length as data,
+#'        to replace names(info) to show on hover. It doesn't include x-variable and
+#'        y-varialbe. xlab and ylab will be used for x-variable and y-variable.
+#' @param bar_fill bar filling color
+#' @return list contains sample statistics, QQ plot and histogram
 #' @export
-fun_proCap_norm_plot <- function(x, subgroup= 1, USL = NA, target = NA, LSL = NA,
-                                 df_info= NULL, info_names= NULL) {
+fun_proCap_norm_plot <- function(data, group= 1, USL = NA, target = NA, LSL = NA,
+                                 df_info= NULL, info_names= NULL, bar_fill= "#36648B") {
     # Form data frame
-    df <- data.frame(subgroup = subgroup, value = x)
+    df <- data.frame(group = group, value = data)
 
     # Get sample mean, standard deviation, Cp, Cpk, Pp, Ppk
-    sample_statistic <- fun_Cp(x, subgroup, USL, target, LSL)
+    sample_statistic <- fun_Cp(data, group, USL, target, LSL)
     sample_size <- sample_statistic$sample_size
     StDev_overall <- sample_statistic$StDev_overall
     StDev_within <- sample_statistic$StDev_within
@@ -515,16 +636,17 @@ fun_proCap_norm_plot <- function(x, subgroup= 1, USL = NA, target = NA, LSL = NA
 
     #--- Plot
     # Q-Q plot
-    qq_plot <- QQ_plot(x, dist= "norm", dparams= list(),
+    qq_plot <- QQ_plot(data, dist= "norm", dparams= list(),
                        df_info= df_info, info_names= info_names, title= "",
                        xlab= "Theoretical", ylab= "Sample", qprobs = c(.25, .75),
                        detrend = FALSE, identity= FALSE, qtype= 7)
 
     # Histogram
     plot_spec <- c("USL" = USL, "target" = target, "LSL" = LSL)
-    hist_plot <- Plot_hist_norm(x, mean= mean, StDev_overall= StDev_overall,
+    hist_plot <- Plot_hist_norm(data, mean= mean, StDev_overall= StDev_overall,
                                 StDev_within= StDev_within, plot_spec= plot_spec,
-                                title= "Sample Distribution", xlab= "", ylab= "")
+                                title= "Sample Distribution", xlab= "", ylab= "",
+                                bar_fill= bar_fill)
 
     # Return
     list(sample_statistic= sample_statistic, qq_plot= qq_plot, hist_plot= hist_plot)
@@ -533,20 +655,24 @@ fun_proCap_norm_plot <- function(x, subgroup= 1, USL = NA, target = NA, LSL = NA
 
 # * Function to plot binomial process capability analysis -----
 #' @title Binomial process capability analysis
-#' @param size vector of (inspection) size
-#' @param x vector of data
-#' @param USL
-#' @param target
-#' @param LSL
+#' @param size numeric vector of inspection size
+#' @param data numeric vector with same length as size, events or defects counts
+#' @param USL upper specification limit of process
+#' @param target  target (center) of process
+#' @param LSL lower specification limit of process
+#' @param df_info dataframe of information shown on hover
+#' @param info_names character vector with the same length as data,
+#'        to replace names(info) to show on hover. It doesn't include x-variable and
+#'        y-varialbe. xlab and ylab will be used for x-variable and y-variable.
+#' @param bar_fill bar filling color
+#' @return list contains sample statistics, QQ plot and histogram
 #' @export
-fun_proCap_binom_plot <- function(size, x, USL = NA, target = NA, LSL = NA,
-                                  df_info= NULL, info_names= NULL) {
+fun_proCap_binom_plot <- function(size, data, USL = NA, target = NA, LSL = NA,
+                                  df_info= NULL, info_names= NULL, bar_fill= "#36648B") {
     # Form data frame
-    df <- data.frame(Size= size, Value= x)
+    df <- data.frame(Size= size, Value= data)
 
     #
-    base_size <- round(mean(df$Size, na.rm = TRUE))
-    df$Size <- round(runif(nrow(df), round(0.85 * base_size), round(1.05 * base_size)))
     base_size <- round(mean(df$Size, na.rm = TRUE))
 
     #--- Statistics
@@ -560,7 +686,7 @@ fun_proCap_binom_plot <- function(size, x, USL = NA, target = NA, LSL = NA,
     prob <- fit$estimate["prob"]
 
     # Sample size
-    sample_size <- length(x)
+    sample_size <- sum(data, na.rm = TRUE)
 
     # Defective fraction
     b <- binom.test(round(prob * base_size), base_size)
@@ -574,15 +700,16 @@ fun_proCap_binom_plot <- function(size, x, USL = NA, target = NA, LSL = NA,
 
     #--- Plot
     # Q-Q plot
-    qq_plot <- QQ_plot(x, dist= "binom", dparams= list(size= base_size, prob= prob),
+    qq_plot <- QQ_plot(data, dist= "binom", dparams= list(size= base_size, prob= prob),
                        df_info= df_info, info_names= info_names, title= "",
                        xlab= "Theoretical", ylab= "Sample", qprobs = c(.25, .75),
                        detrend = FALSE, identity= FALSE, qtype= 7)
 
     # Histogram
     plot_spec <- c("USL" = USL, "target" = target, "LSL" = LSL)
-    hist_plot <- Plot_hist_attr(x, plot_spec, title = "Sample distribution",
-                                xlab= "Defective counts", ylab= "Frequency")
+    hist_plot <- Plot_hist_attr(data, plot_spec, title = "Sample distribution",
+                                xlab= "Defective counts", ylab= "Frequency",
+                                bar_fill = bar_fill)
 
     # Return
     list(sample_statistic= statistic, qq_plot= qq_plot, hist_plot= hist_plot)
@@ -590,25 +717,27 @@ fun_proCap_binom_plot <- function(size, x, USL = NA, target = NA, LSL = NA,
 
 # * Function to plot poisson process capability analysis -----
 #' @title Poisson process capability analysis
-#' @param size vector of (inspection) size
-#' @param x vector of data
-#' @param iu inspection unit, how many samples inspected per unit
-#' @param USL
-#' @param target
-#' @param LSL
+#' @param size numeric vector of inspection size
+#' @param data numeric vector with same length as size, events or defects counts
+#' @param iu, ispection unit
+#' @param USL upper specification limit of process
+#' @param target  target (center) of process
+#' @param LSL lower specification limit of process
+#' @param df_info dataframe of information shown on hover
+#' @param info_names character vector with the same length as data,
+#'        to replace names(info) to show on hover. It doesn't include x-variable and
+#'        y-varialbe. xlab and ylab will be used for x-variable and y-variable.
+#' @param bar_fill bar filling color
+#' @return list contains sample statistics, QQ plot and histogram
 #' @export
-fun_proCap_pois_plot <- function(size, x, iu, USL = NA, target = NA, LSL = NA,
-                                 df_info= NULL, info_names= NULL) {
-    # Form data frame
-    df <- data.frame(Size= size, Value= x)
+fun_proCap_pois_plot <- function(size, data, iu, USL = NA, target = NA, LSL = NA,
+    df_info= NULL, info_names= NULL, bar_fill= "#36648B") {
 
-    #
-    base_size <- round(mean(df$Size, na.rm = TRUE))
-    df$Size <- round(runif(nrow(df), round(0.85 * base_size), round(1.05 * base_size)))
-    base_size <- round(mean(df$Size, na.rm = TRUE))
+    # Form data frame
+    df <- data.frame(Size= size, Value= data)
 
     #--- Statistics
-    sample_size <- length(x)
+    sample_size <- sum(data, na.rm = TRUE)
 
     df <- df %>%
         mutate(No_iu = Size / iu, u = round(Value / No_iu))
@@ -627,15 +756,16 @@ fun_proCap_pois_plot <- function(size, x, iu, USL = NA, target = NA, LSL = NA,
 
     #--- Plot
     # Q-Q plot
-    qq_plot <- QQ_plot(x, dist= "pois", dparams= list(lambda= ubar),
+    qq_plot <- QQ_plot(data, dist= "pois", dparams= list(lambda= ubar),
                        df_info= df_info, info_names= info_names, title= "",
                        xlab= "Theoretical", ylab= "Sample", qprobs = c(.25, .75),
                        detrend = FALSE, identity= FALSE, qtype= 7)
 
     # Histogram
     plot_spec <- c("USL" = USL, "target" = target, "LSL" = LSL)
-    hist_plot <- Plot_hist_attr(x, plot_spec, title = "Sample distribution",
-                                xlab= "Defect per Unit", ylab= "Frequency")
+    hist_plot <- Plot_hist_attr(data, plot_spec, title = "Sample distribution",
+                                xlab= "Defect per Unit", ylab= "Frequency",
+                                bar_fill = bar_fill)
 
     # Return
     list(sample_statistic= statistic, qq_plot= qq_plot, hist_plot= hist_plot)

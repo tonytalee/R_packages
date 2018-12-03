@@ -8,12 +8,12 @@ of parameters for plotting.}
 P_preProcess(df, info = NULL, xcolor = NULL, xtext = NULL,
   name_vector = NULL, xaxis_style = NULL, yaxis_style = NULL,
   xGrid = TRUE, yGrid = TRUE, xFactor = FALSE, x_extend = NULL,
-  y_extend = NULL, mode = "X")
+  y_extend = NULL, mode = "X", width = NULL, colors = color_set)
 }
 \arguments{
 \item{df}{dataframe contain x and y}
 
-\item{info}{vector with the same rows as df to show information for hover}
+\item{info}{dataframe with the same rows as df to show information for hover}
 
 \item{xcolor}{character vector as the same rows of df for color variable}
 
@@ -21,19 +21,25 @@ P_preProcess(df, info = NULL, xcolor = NULL, xtext = NULL,
 
 \item{name_vector}{character vector to names x-label, y-label and info}
 
+\item{xaxis_style}{list to layout for setting x-axis style}
+
+\item{yaxis_style}{list to layout for setting y-axis style}
+
 \item{xGrid}{logical, show x grid}
 
 \item{yGrid}{logical, show y grid}
 
 \item{xFactor}{logical, turn x-variable to factor}
 
+\item{x_extend}{c(lower_extend_ratio, upper_extend_ratio), x-coordinate extension}
+
+\item{y_extend}{c(lower_extend_ratio, upper_extend_ratio), y-coordinate extension}
+
 \item{mode}{character, mode of plotly trace, default "X"}
 
-\item{xaxis_stype}{list to layout for setting x-axis style}
+\item{width}{a numeric vector with two, min and max pixel of plot width}
 
-\item{yaxis_stype}{list to layout for setting y-axis style}
-
-\item{x_extend(y_extend)}{c(lower_extend_ratio, upper_extend_ratio), coordinate extension}
+\item{colors}{vector of color set for plotting}
 }
 \description{
 Preprocess the input of Plotly_XXX functions and turn them to requirement

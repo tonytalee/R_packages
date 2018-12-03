@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1541948325240.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "961944673",
+    "id" : "1EFDBB73",
+    "lastKnownWriteTime" : 1541948859,
+    "last_content_update" : 1541948859844,
+    "path" : "~/SightingData/R_packages/setPlotly/R/plotly_functions.R",
+    "project_path" : "R/plotly_functions.R",
+    "properties" : {
+        "cursorPosition" : "19,76",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

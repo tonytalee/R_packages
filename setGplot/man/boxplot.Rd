@@ -5,8 +5,9 @@
 \title{Customizing box plot}
 \usage{
 boxplot(fill_var = NA, fill_col = "steelblue",
-  color_col = "steelblue4", alpha = 0.7, outlier_size = 1.5,
-  size = 0.5)
+  color_col = "steelblue4", alpha = 0.5, size = 1,
+  outlier_size = 1.5, outlier_alpha = 1, outlier_stroke = 1,
+  width = 0.6, rm_na = TRUE)
 }
 \arguments{
 \item{fill_var}{String, Variable name for aes coloring.}
@@ -17,9 +18,17 @@ boxplot(fill_var = NA, fill_col = "steelblue",
 
 \item{alpha}{Number, alpha of box.}
 
+\item{size}{Number, size of box outline.}
+
 \item{outlier_size}{Number, size of outliers.}
 
-\item{size}{Number, size of box outline.}
+\item{outlier_alpha}{Number, alpha of outlier.}
+
+\item{outlier_stroke}{Number, stroke of outlier.}
+
+\item{width}{Number between 0 and 1, relative width of box}
+
+\item{rm_na}{Logic, remove NA with warning or not}
 }
 \description{
 Customizing box plot

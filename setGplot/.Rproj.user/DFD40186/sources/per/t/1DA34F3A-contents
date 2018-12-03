@@ -121,17 +121,26 @@ theme_min <- function (base_size=14, face='plain', plotTitle_just = 0.5,
 #' @param fill_col String, color of filling box.
 #' @param color_col String, color of box outline and outliers
 #' @param alpha Number, alpha of box.
-#' @param outlier_size Number, size of outliers.
 #' @param size Number, size of box outline.
+#' @param outlier_size Number, size of outliers.
+#' @param outlier_alpha Number, alpha of outlier.
+#' @param outlier_stroke Number, stroke of outlier.
+#' @param width Number between 0 and 1, relative width of box
+#' @param rm_na Logic, remove NA with warning or not
 #' @export
 boxplot <- function(fill_var=NA, fill_col= "steelblue", color_col= "steelblue4",
-                    alpha= 0.7, outlier_size= 1.5, size= 0.5) {
+                    alpha= 0.5, size= 1, outlier_size= 1.5, outlier_alpha= 1,
+                    outlier_stroke= 1, width= 0.6, rm_na = TRUE) {
     if (is.na(fill_var)) {
         geom_boxplot(outlier.size=outlier_size, outlier.shape=4, size=size,
-                     fill=fill_col, color=color_col, alpha= alpha)
+                     fill=fill_col, color=color_col, alpha= alpha,
+                     outlier.alpha= outlier_alpha, outlier.stroke= outlier_stroke,
+                     width= width, na.rm= rm_na)
     } else {
         geom_boxplot(outlier.size=outlier_size, outlier.shape=4, size=size,
-                     color=color_col,alpha= alpha,  aes_string(fill= fill_var))
+                     alpha= alpha, outlier.alpha= outlier_alpha,
+                     outlier.stroke= outlier_stroke, width= width, na.rm= rm_na,
+                     aes_string(fill= fill_var, color= fill_var))
     }
 }
 

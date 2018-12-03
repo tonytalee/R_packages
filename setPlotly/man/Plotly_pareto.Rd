@@ -5,7 +5,8 @@
 \title{Function to plot Pareto}
 \usage{
 Plotly_pareto(category, frequency, title = "Pareto Plot", xlab = "",
-  ylab = "發生頻率", topCat = 0)
+  ylab = "Frequency", topCat = 0, width = c(300, 1000),
+  colors = "#4682B4")
 }
 \arguments{
 \item{category}{vector of data for category}
@@ -18,7 +19,11 @@ Plotly_pareto(category, frequency, title = "Pareto Plot", xlab = "",
 
 \item{ylab}{y label}
 
-\item{topCap}{integer, numbers of top categoried to show on plot, 0 for all}
+\item{topCat}{integer, numbers of top categoried to show on plot, 0 for all}
+
+\item{width}{a numeric vector with two, min and max pixel of plot width}
+
+\item{colors}{vector of color set for plotting}
 }
 \description{
 Function to plot Pareto

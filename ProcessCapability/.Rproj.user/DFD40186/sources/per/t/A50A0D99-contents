@@ -1,0 +1,74 @@
+library(fitdistrplus)
+library(dplyr)
+library(tidyr)
+library(plotly)
+library(ggplot2)
+library(setGplot)
+
+source("./R/ProcessCapability.R")
+
+dir <- "~/OneDrive/WorkDrive/R/R_package_dev/R_codes_for_test"
+load(file= file.path(dir, "spcChart_data.RData"))
+
+# * Normal distribution ------------------------------------------------------------------------
+Chart_type <- "Xbar-R"
+da <- data_demo[[Chart_type]]$data %>% arrange(DTime)
+pCtrl <- data_demo[[Chart_type]]$pCtrl
+
+df <- da %>%
+    select(DTime, Value, Lot, Product, Stage, Machine_id)
+
+# test fun_Cp
+data = df$Value; group <- select(df, Lot, Stage) %>% unite("group") %>% .$group
+USL = pCtrl$USL; target = pCtrl$CS; LSL = pCtrl$LSL
+fun_Cp(data = df$Value, USL = pCtrl$USL, target = pCtrl$CS, LSL = pCtrl$LSL)
+fun_Cp(data = df$Value, group = group, USL = pCtrl$USL, target = pCtrl$CS, LSL = pCtrl$LSL)
+
+# test QQ_plot
+df_info <- select(df, Lot, Stage)
+QQ_plot(data = data, df_info = df_info)
+QQ_plot(data, group= df$Product)
+
+# test Plot_hist_norm
+Plot_hist_norm(data = data)
+
+# test fun_proCap_norm_plot
+df_info <- select(df, Lot, Stage, Machine_id)
+info_names <- c("lot", "stage", "machine id")
+li <- fun_proCap_norm_plot(data, df_info = df_info, info_names = info_names)
+li$qq_plot
+li$hist_plot
+
+# * binomial distribution -------------------------------------------------------------------
+Chart_type <- "p"
+da <- data_demo[[Chart_type]]$data
+pCtrl <- data_demo[[Chart_type]]$pCtrl
+
+# test fun_proCap_binom_plot
+df_info <- select(da, Lot, Stage, Machine_id)
+info_names <- c("lot", "stage", "machine id")
+data = da$Value; size= da$Size;
+li <- fun_proCap_binom_plot(size, data, df_info = df_info)
+li$qq_plot
+li$hist_plot
+
+# * Poisson distribution ---------------------------------------------------------------------------
+Chart_type <- "u"
+da <- data_demo[[Chart_type]]$data
+iu <- data_demo[[Chart_type]]$iu
+pCtrl <- data_demo[[Chart_type]]$pCtrl
+
+# test fun_proCap_pois_plot
+df_info <- select(da, Lot, Stage, Machine_id)
+info_names <- c("lot", "stage", "machine id")
+data = da$Value; size= da$Size;
+li <- fun_proCap_pois_plot(size, data, iu, df_info = df_info)
+li$qq_plot
+li$hist_plot
+
+# test QQ_plot
+ubar <- mean(da$Value)
+QQ_plot(data, group = da$Product, dist= "pois", dparams= list(lambda= ubar),
+       df_info= df_info, info_names= info_names, title= "",
+       xlab= "Theoretical", ylab= "Sample data", qprobs = c(.25, .75),
+       detrend = FALSE, identity= FALSE, qtype= 7)

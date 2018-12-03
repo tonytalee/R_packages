@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1541836806907.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3948890793",
+    "id" : "609263E4",
+    "lastKnownWriteTime" : 1541989441,
+    "last_content_update" : 1541989441199,
+    "path" : "~/SightingData/R_packages/spcChart/R/calculate_control_limits.R",
+    "project_path" : "R/calculate_control_limits.R",
+    "properties" : {
+        "cursorPosition" : "35,39",
+        "docOutlineVisible" : "1",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 3,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

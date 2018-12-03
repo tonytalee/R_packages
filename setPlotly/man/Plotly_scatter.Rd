@@ -8,13 +8,14 @@ Plotly_scatter(df, info = NULL, xcolor = NULL, xtext = NULL,
   name_vector = NULL, margin = NULL, xaxis_style = NULL,
   yaxis_style = NULL, showLegend = FALSE, xGrid = TRUE,
   yGrid = TRUE, xFactor = FALSE, x_extend = NULL, y_extend = NULL,
-  title = "", title_font = NULL, height = NULL,
-  textposition = "top", mode = "lines+markers")
+  title = "", title_font = NULL, textposition = "top",
+  width = c(300, 1000), height = NULL, autosize = FALSE,
+  mode = "lines+markers", colors = color_set)
 }
 \arguments{
 \item{df}{dataframe contain x and y}
 
-\item{info}{vector with the same rows as df to show information for hover}
+\item{info}{dataframe with the same rows as df to show information for hover}
 
 \item{xcolor}{character vector as the same rows of df for color variable}
 
@@ -24,6 +25,10 @@ Plotly_scatter(df, info = NULL, xcolor = NULL, xtext = NULL,
 
 \item{margin}{list(l= 1, r= 1, t= 1, b= 1), plot margin}
 
+\item{xaxis_style}{list to layout for setting x-axis style}
+
+\item{yaxis_style}{list to layout for setting y-axis style}
+
 \item{showLegend}{logical, show legend on plot}
 
 \item{xGrid}{logical, show x grid}
@@ -32,21 +37,25 @@ Plotly_scatter(df, info = NULL, xcolor = NULL, xtext = NULL,
 
 \item{xFactor}{logical, turn x-variable to factor}
 
+\item{x_extend}{c(lower_extend_ratio, upper_extend_ratio), x-coordinate extension}
+
+\item{y_extend}{c(lower_extend_ratio, upper_extend_ratio), y-coordinate extension}
+
 \item{title}{title of plot}
 
 \item{title_font}{list of plotly titlefont}
 
+\item{textposition}{posistion of text to show on plot}
+
+\item{width}{a numeric vector with two, min and max pixel of plot width}
+
 \item{height}{height of plot (width is auto calculated by unique values of x)}
 
-\item{textposition}{posistion of text to show on plot}
+\item{autosize}{logic, TRUE for autosizing plot}
 
 \item{mode}{plot_ly mode, "lines+markers", "markers" or "lollipop"}
 
-\item{xaxis_stype}{list to layout for setting x-axis style}
-
-\item{yaxis_stype}{list to layout for setting y-axis style}
-
-\item{x_extend(y_extend)}{c(lower_extend_ratio, upper_extend_ratio), coordinate extension}
+\item{colors}{vector of color set for plotting}
 }
 \description{
 Function to plotly scatter-line chart

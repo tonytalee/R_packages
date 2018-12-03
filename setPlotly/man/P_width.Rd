@@ -4,11 +4,13 @@
 \alias{P_width}
 \title{Count plot width by numbers of x factors}
 \usage{
-P_width(x)
+P_width(x, width = c(300, 1000))
 }
 \arguments{
 \item{x}{vecter to count the unique value and than calculate plot width
 according the unique value}
+
+\item{width}{a numeric vector with two, min and max pixel of plot width}
 }
 \description{
 Count plot width by numbers of x factors
