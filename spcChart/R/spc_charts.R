@@ -1,0 +1,1220 @@
+# version 0.2.1
+
+#=== Plot function =====
+#' @title Plotly SPC chart
+#' @param x vector of x- data
+#' @param y vector of y- data
+#' @param xlab character, label of x-axis, showing in hover text
+#' @param ylab character, label of y-axis, showing in hover text
+#' @param df_info data frame contians the information to show in plot
+#' @param info_names character vector, 順序要對應到 df_info 的欄位順序
+#' @param df_color dataframe or vector, for coloring the points of plot
+#' @param center center line of control chart
+#' @param UCL upper control limit
+#' @param LCL lowe control limit
+#' @param oo_limits TRUE for count out of limits
+#' @param violate_runs TRUE for count violating runs
+#' @param zoneStrip TRUE is want plot strip line for zone A, B, C
+#' @param legend TRUE is want to show legend on plot
+#' @param color_set custom color set for plotting
+#' @return plotly spc chart
+
+Plotly_spc <- function(x, y, xlab= NULL, ylab= NULL, df_info= NULL, info_names= NULL,
+    df_color= NULL, center= NULL, UCL= NULL, LCL= NULL, oo_limits= TRUE,
+    violate_runs= TRUE, zoneStrip= FALSE, legend= FALSE, color_set= "Set1") {
+
+    #  Form dataframe and remove NA data
+    if (is.null(xlab)) xlab <- "x"
+    if (is.null(ylab)) xlab <- "data"
+
+    df <- data.frame(x= x, y= y, stringsAsFactors = FALSE)
+    if (! is.null(df_info)) {
+        df <- cbind(df, df_info)
+        if (is.null(info_names)) info_names <- names(df_info)
+        info_names <- c(xlab, ylab, info_names)
+    } else {
+        info_names <- c(xlab, ylab)
+    }
+    df <- df %>% filter(!is.na(y))
+
+    # hover text on SPC points
+    df$y <- round(df$y, 3)
+    hText <- apply(df, 1, function(x) paste(info_names, x, sep= ": "))
+    hText <- apply(hText, 2, function(x) paste(x, collapse = " <br> "))
+
+    # drop out columns of info from df
+    df <- select(df, x, y)
+
+    # Set color map for ooc
+    color_map <- c(normal= "steelblue", ool= "red", violate= "orange")
+
+    # Add variable for marking normal, oo_limits and violate_runs
+    if (! is.null(df_color)) {
+        oo_limits <- FALSE
+        violate_runs <- FALSE
+    }
+    df$label <- "normal"
+    if (oo_limits & !is.null(LCL[1] & !is.null(UCL[1])))
+        { df$label[which(df$y > UCL | df$y < LCL)] <- "ool" }
+    if (violate_runs) {
+        df$label[violating.runs(list(statistics= df$y, center= center, cl= NULL))] <-
+            "violate"
+    }
+
+    # Set x, y corrdinates limits
+    ymax <- max(c(df$y, UCL), na.rm = TRUE)
+    ymin <- min(c(df$y, LCL), na.rm = TRUE)
+    ymarg <- (ymax - ymin) * 0.1
+    yul <- ymax + ymarg # for coor limits
+    yll <- ymin - ymarg
+
+    # breaks for y-axis
+    breaks <- c()
+    if (! is.null(LCL[1])) breaks <- c(breaks, "L"= min(LCL, na.rm = TRUE))
+    breaks <- c(breaks, "C"= center)
+    if (! is.null(UCL[1])) breaks <- c(breaks, "U"= max(UCL, na.rm = TRUE))
+    breaks <- round(breaks, 4)
+
+    # if zone strips required
+    if (zoneStrip) {
+        X_3s <- UCL - center # 3-sigma zone
+        yint <- round(center + c(-2, -1, 1, 2) * X_3s / 3, 4)
+        breaks <- c(breaks, yint)
+    }
+
+    # Y-axis style
+    style_yaxis <- list(title = ylab,
+                        autotick = FALSE,
+                        ticks = "",
+                        tickmode = "array",
+                        tickvals = breaks,
+                        zeroline = FALSE,
+                        tickprefix= " ")
+
+    # Plot
+    if (! is.null(df_color)) {
+        if (legend) {
+            p <- plot_ly(df, x= ~x, colors= color_set)
+        } else {
+            p <- plot_ly(df, x= ~x, colors= color_set, showlegend= F)
+        }
+
+    } else {
+        p <- plot_ly(df, x= ~x)
+    }
+
+    # add control limit
+    if (! is.na(UCL[1])) {
+        p <- p %>%
+            add_trace(y= ~UCL, type= "scatter", mode= "lines", showlegend= FALSE,
+                      line= list(color= "red", width= 0.7, dash= "dash"),
+                      hoverinfo = "text",
+                      text= ~paste("UCL: ", round(UCL, 3)))
+    }
+    if (! is.na(LCL[1])) {
+        p <- p %>%
+            add_trace(y= ~LCL, type= "scatter", mode= "lines", showlegend= FALSE,
+                      line= list(color= "red", width= 0.7, dash= "dash"),
+                      hoverinfo = "text",
+                      text= ~paste("LCL: ", round(LCL, 3)))
+    }
+
+    # add center line and data points
+    p <- p %>%
+        add_trace(y= ~center, type= "scatter", mode= "lines", showlegend= FALSE,
+                  line= list(color= "darkgreen", width= 0.7),
+                  hoverinfo = "text",
+                  text= ~paste("CL: ", breaks["C"]))
+    if (! is.null(df_color)) {
+        # turn df_color to vector in case of data frame
+        if (is.data.frame(df_color)) df_color <- df_color[[1]]
+
+        p <- p %>%
+            add_lines(y= ~y, line = list(color= "steelblue", width = 1),
+                      showlegend= FALSE, hoverinfo= "none") %>%
+            add_markers(y = ~y, color= ~df_color,
+                        marker = list( size= 7,
+                                       line= list(color= "white", width= 1)),
+                        hoverinfo = "text",
+                        text= ~hText)
+    } else {
+        p <- p %>%
+            add_trace(y= ~y,  type= "scatter", mode= "lines+markers", showlegend= FALSE,
+                      marker = list(color= ~color_map[label], size= 7,
+                                    line= list(color= "white", width= 1)),
+                      line = list(color= "steelblue", width = 1),
+                      hoverinfo = "text",
+                      text= ~hText)
+    }
+
+    # add layout
+    p <- p  %>%
+        plotly::layout(margin = list(l = 120),
+               xaxis = list(title= xlab, zeroline = FALSE, showline = FALSE,
+                            showticklabels = FALSE, showgrid = FALSE),
+               yaxis = style_yaxis)
+    p
+}
+
+#--- Cusum plotly
+#' @title plotly cusum chart
+#' @param x numeric vector of original data points
+#' @param cusumx cusum object
+#' @param df_info data frame contians the information to show in plot
+#' @param info_names character vector, 順序要對應到 df_info 的欄位順序
+#' @param xlab label for x-axis
+#' @param ylab label of y-axis
+#' @param title title of plot
+#' @return plotly plot
+Plotly_cusum <- function(x, cusumx, df_info= NULL, info_names= NULL,
+    xlab= NULL, ylab= "Cumulative Sum", title= "Cusum Chart") {
+    #  Form dataframe and remove NA data
+    if (is.null(xlab)) xlab <- "x"
+
+    # Set color map for ooc
+    color_map <- c(normal= "steelblue", ool= "red", violate= "orange")
+
+    # Build data frame
+    df_cusum <- data.frame(x= x, pos= cusumx$pos, neg= cusumx$neg, df_info,
+                           l_pos= "normal", l_neg= "normal", stringsAsFactors = F)
+
+    df_cusum$l_neg[cusumx$violations$lower] <- "ool"
+    df_cusum$l_pos[cusumx$violations$upper] <- "ool"
+
+    # Hover text on chart
+    df_cusum$pos <- round(df_cusum$pos, 3)
+    df_cusum$neg <- round(df_cusum$neg, 3)
+    hText_pos <- apply(select(df_cusum, -neg, -l_pos, -l_neg), 1,
+                   function(x) paste(c(xlab, "data", info_names), x, sep= ": "))
+    hText_pos <- apply(hText_pos, 2, function(x) paste(x, collapse = " <br> "))
+    hText_neg <- apply(select(df_cusum, -pos, -l_pos, -l_neg), 1,
+                       function(x) paste(c(xlab, "data", info_names), x, sep= ": "))
+    hText_neg <- apply(hText_neg, 2, function(x) paste(x, collapse = " <br> "))
+
+
+    # Set the boundaries
+    ldb <- -1 * cusumx$decision.interval
+    udb <- cusumx$decision.interval
+
+    # Y-axis style
+    style_yaxis <- list(title = ylab,
+                        autotick = FALSE,
+                        ticks = "",
+                        tickmode = "array",
+                        zeroline = TRUE,
+                        tickprefix= " ")
+
+    # Plot
+    plot_ly(df_cusum, x= ~x) %>%
+        add_trace(y= ~udb, type= "scatter", mode= "lines", showlegend= FALSE,
+                  line= list(color= "red", width= 0.7, dash= "dash"),
+                  hoverinfo = "text",
+                  text= ~paste("UDB: ", udb)) %>%
+        add_trace(y= ~ldb, type= "scatter", mode= "lines", showlegend= FALSE,
+                  line= list(color= "red", width= 0.7, dash= "dash"),
+                  hoverinfo = "text",
+                  text= ~paste("LDB: ", ldb)) %>%
+        add_trace(y= ~pos,  type= "scatter", mode= "lines+markers", showlegend= FALSE,
+                  marker = list(color= ~color_map[l_pos], size= 7,
+                                line= list(color= "white", width= 1)),
+                  line = list(color= "steelblue", width = 1),
+                  hoverinfo = "text",
+                  text= ~hText_pos) %>%
+        add_trace(y= ~neg,  type= "scatter", mode= "lines+markers", showlegend= FALSE,
+                  marker = list(color= ~color_map[l_neg], size= 7,
+                                line= list(color= "white", width= 1)),
+                  line = list(color= "steelblue", width = 1),
+                  hoverinfo = "text",
+                  text= ~hText_neg) %>%
+        plotly::layout(margin = list(l = 120),
+                       title= title,
+                       xaxis = list(title= xlab, zeroline = FALSE, showline = FALSE,
+                            showticklabels = FALSE, showgrid = FALSE),
+                       yaxis = style_yaxis)
+}
+
+#--- EWMA plotly
+#' @title plotly EWMA
+#' @param x numeric vector of original data points
+#' @param ewmax ewma object
+#' @param df_info data frame contians the information to show in plot
+#' @param info_names character vector, 順序要對應到 df_info 的欄位順序
+#' @param xlab label for x-axis
+#' @param ylab label of y-axis
+#' @param title title of plot
+#' @return plotly plot
+#--- EWMA
+Plotly_ewma <- function(x, ewmax, df_info= NULL, info_names= NULL,
+    xlab= NULL, ylab= "EWMA", title= "EWMA Chart") {
+    #....................................................................................
+    # ewmax: object ewma of qcc
+    # df_info: data frame contains colums of required information, i.e. product, stag
+    #....................................................................................
+
+    #  Form dataframe and remove NA data
+    if (is.null(xlab)) xlab <- "x"
+
+    # Set color map for ooc
+    color_map <- c(normal= "steelblue", ool= "red", violate= "orange")
+
+    # Y-axis style
+    style_yaxis <- list(title = ylab,
+                        autotick = FALSE,
+                        ticks = "",
+                        tickmode = "array",
+                        zeroline = FALSE,
+                        tickprefix= " ")
+    # Form data frame
+    df_ewma <- data.frame(x= x, original= ewmax$statistics, y= ewmax$y,
+                          LCL= ewmax$limits[, 1], UCL= ewmax$limits[, 2],
+                          df_info, label= "normal", stringsAsFactors = F)
+
+    df_ewma$label[ewmax$violations] <- "ool"
+
+    # Hover text on chart
+    df_ewma$original <- round(df_ewma$original, 3)
+    df_ewma$y <- round(df_ewma$y, 3)
+    hText_o <- apply(select(df_ewma, -y, -LCL, -UCL, -label), 1,
+                       function(x) paste(c(xlab, "data", info_names), x, sep= ": "))
+    hText_o <- apply(hText_o, 2, function(x) paste(x, collapse = " <br> "))
+    hText_y <- apply(select(df_ewma, -original, -LCL, -UCL, -label), 1,
+                     function(x) paste(c(xlab, "data", info_names), x, sep= ": "))
+    hText_y <- apply(hText_y, 2, function(x) paste(x, collapse = " <br> "))
+
+    #--- Plot
+    plot_ly(df_ewma, x= ~x) %>%
+        add_trace(y= ~UCL, type= "scatter", mode= "lines", showlegend= FALSE,
+                  line= list(color= "red", width= 0.7, dash= "dash"),
+                  hoverinfo = "text",
+                  text= ~paste("UCL: ", UCL)) %>%
+        add_trace(y= ~LCL, type= "scatter", mode= "lines", showlegend= FALSE,
+                  line= list(color= "red", width= 0.7, dash= "dash"),
+                  hoverinfo = "text",
+                  text= ~paste("LCL: ", LCL)) %>%
+        add_trace(y= ~original,  type= "scatter", mode= "markers", showlegend= FALSE,
+                  marker = list(color= "grey", symbol= "cross", size= 3),
+                  hoverinfo = "text",
+                  text= ~hText_o) %>%
+        add_trace(y= ~y,  type= "scatter", mode= "lines+markers", showlegend= FALSE,
+                  marker = list(color= ~color_map[label], size= 7,
+                                line= list(color= "white", width= 1)),
+                  line = list(color= "steelblue", width = 1),
+                  hoverinfo = "text",
+                  text= ~hText_y) %>%
+        plotly::layout(margin = list(l = 120),
+                       title= "EWMA Chart",
+                       xaxis = list(title= xlab, zeroline = FALSE, showline = FALSE,
+                            showticklabels = FALSE, showgrid = FALSE),
+                       yaxis = style_yaxis)
+}
+
+# ... SPC chart .........................................................................
+#' @title Xbar-R chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable names for x-axis
+#' @param y_var character, variable names for y-axis
+#' @param info_var character vector, variables for hover text
+#' @param group_var character vector form the smaple id
+#' @param color_var character, variable of coloring points
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param control_limits information of control limits of Xbar-R chart: CLx, CLr, UCLx,
+#'        LCLx, UCLr, LCLr
+#' @param xlab x-axis label
+#' @param ylab_X y-axis label for Xbar chart
+#' @param ylab_R y-axis label for R chart
+#' @param title title
+#' @param R_chart logic, TRUE to include R chart, FALSE for Xbar chart only
+#' @param legend logic, TRUE to show legend on plot
+#' @param color_set custom color set
+#' @param zoneStrip logic, TRUE to show zone strip lines
+#' @return SPC chart by plotly
+#' @export
+Xbar_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var = NULL,
+    info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "Xbar", ylab_R= "R",
+    title= "", R_chart= TRUE, legend= TRUE, color_set= "Set1", zoneStrip= TRUE) {
+
+    # Handling group_var
+    if (! is.null(group_var)) {
+        # Make sure group variables are character
+        for (col in group_var) df[, col] <- as.character(df[, col])
+    } else {
+        # if group_var is null, then df will be group_by x_var
+        group_var <- x_var
+    }
+
+    # Handling xlab
+    if (is.null(xlab)) xlab <- x_var
+
+
+    # Process input df for plotting
+    # Get center lines and control limits
+    if (is.null(control_limits)) {
+        sample <- df %>% select(group_var) %>% unite("sample_id")
+        cl <- cl_Xbar_R(df[[y_var]], sample)
+        Xdbar <- cl$CLx
+        Rbar <- cl$CLr
+        UCLx <- cl$UCLx
+        LCLx <- cl$LCLx
+        UCLr <- cl$UCLr
+        LCLr <- cl$LCLr
+        #...
+    } else {
+        Xdbar <- control_limits$CLx
+        Rbar <- control_limits$CLr
+        UCLx <- control_limits$UCLx
+        LCLx <- control_limits$LCLx
+        UCLr <- control_limits$UCLr
+        LCLr <- control_limits$LCLr
+    }
+
+    # dataframe for join after summarized df to Xbar and R
+    df_join <- select(df, unique(c(x_var, info_var, group_var, color_var)))
+    df_join <- filter(df_join, ! duplicated(df_join))
+
+    # Count Xbar and R
+    df <- df %>%
+        group_by_at(group_var) %>%
+        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
+                  R = max(eval(parse(text = y_var)), na.rm = TRUE) -
+                      min(eval(parse(text = y_var)), na.rm = TRUE), # range
+                  size = n()) %>%
+        as.data.frame(.) %>%
+        left_join(df_join, by= group_var) %>%
+        arrange(eval(parse(text = x_var)))
+
+    # Handling info_var and info_names
+    if (! is.null(info_var)) {
+        # info_var
+        if (is.null(info_names)) {
+            info_names <- names(info_var)
+        } else {
+            # check the length of info_var equal to info_names
+            if (length(info_names) != length(info_var)) {
+                stop("infor_var and info_names are not equal length.")
+            }
+        }
+
+        # df_info
+        df_info <- df[, info_var]
+    } else {
+        df_info <- NULL
+    }
+
+    # Handling color_var
+    if (! is.null(color_var)) {
+        df_color <- df[, color_var]
+    } else {
+        df_color <- NULL
+    }
+
+    #=== Plot Xbar chart
+    p <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
+        info_names = info_names, df_color= df_color, center= Xdbar, UCL= UCLx,
+        LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
+        legend = legend, color_set = color_set)
+
+    #=== Plot R chart
+    if (R_chart) {
+        p2 <- Plotly_spc(df[[x_var]], df$R, xlab, ylab_R, df_info = df_info,
+            info_names = info_names, df_color= df_color, center= Rbar, UCL= UCLr,
+            LCL= LCLr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
+            legend = F, color_set = color_set)
+        # Merge plots
+        p <- subplot(p, p2, nrows = 2,  heights = c(0.6, 0.4),
+                     shareX = TRUE, titleY = TRUE) %>%
+            plotly::layout(title = title, margin = list(l = 100),
+                           yaxis= list(tickprefix= " "))
+    }
+
+    # Return
+    p
+}
+
+#' @title Xbar-mR-R chart
+#' @param control_limits information of control limits of Xbar-R chart: CLx, CLmr, CLr,
+#'        UCLx, LCLx, UCLr, LCLr, UCLmr, LCLmr
+#' @param ylab_mR y label of mR chart
+#' @inheritParams Xbar_R
+#' @return SPC chart by plotly
+#' @export
+Xbar_mR_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var = NULL,
+    info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "Xbar", ylab_mR= "mR",
+    ylab_R= "R", title= "", R_chart= TRUE, legend= TRUE, color_set= "Set1",
+    zoneStrip= TRUE) {
+
+    # Handling group_var
+    if (! is.null(group_var)) {
+        # Make sure group variables are character
+        for (col in group_var) df[, col] <- as.character(df[, col])
+    } else {
+        # if group_var is null, then df will be group_by x_var
+        group_var <- x_var
+    }
+
+    # Handling xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # info_var
+    if (! is.null(info_var)) {
+        if (is.null(info_names)) info_names <- names(info_var)
+        names(info_names) <- names(info_var)
+    }
+
+    # Process input df for plotting
+    # Get center lines and control limits
+    if (is.null(control_limits)) {
+        sample <- df %>% select(group_var) %>% unite("sample_id")
+        cl <- cl_Xbar_R(df[[y_var]], sample)
+        Xdbar <- cl$CLx
+        Rbar <- cl$CLr
+        UCLx <- cl$UCLx
+        LCLx <- cl$LCLx
+        UCLr <- cl$UCLr
+        LCLr <- cl$LCLr
+    } else {
+        Xdbar <- control_limits$CLx
+        mRbar <- control_limits$CLmr
+        Rbar <- control_limits$CLr
+        UCLx <- control_limits$UCLx
+        LCLx <- control_limits$LCLx
+        UCLr <- control_limits$UCLr
+        LCLr <- control_limits$LCLr
+        UCLmr <- control_limits$UCLmr
+        LCLmr <- control_limits$LCLmr
+    }
+
+    # dataframe for join after summarized df to Xbar, mR and R
+    df_join <- select(df, unique(c(x_var, info_var, group_var, color_var)))
+    df_join <- filter(df_join, ! duplicated(df_join))
+
+    # Count Xbar and R
+    df <- df %>%
+        group_by_at(group_var) %>%
+        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
+                  R = max(eval(parse(text = y_var)), na.rm = TRUE) -
+                      min(eval(parse(text = y_var)), na.rm = TRUE), # range
+                  size = n()) %>%
+        as.data.frame(.) %>%
+        left_join(df_join, by= group_var) %>%
+        arrange(eval(parse(text = x_var))) %>%
+        mutate(mR = abs(Xbar - lag(Xbar)))
+
+    # Remove the first row since mR is NA
+    df <- df[-1, ]
+
+    # Get control limits of mR when no default
+    if (is.null(control_limits)) {
+        cl <- cl_X_mR(df[["Xbar"]])
+
+        mRbar <- cl$CLmr
+        UCLmr <- cl$UCLmr
+        LCLmr <- cl$LCLmr
+    }
+
+    # Handling info_var and info_names
+    if (! is.null(info_var)) {
+        # info_var
+        if (is.null(info_names)) {
+            info_names <- names(info_var)
+        } else {
+            # check the length of info_var equal to info_names
+            if (length(info_names) != length(info_var)) {
+                stop("infor_var and info_names are not equal length.")
+            }
+        }
+
+        # df_info
+        df_info <- df[, info_var]
+    } else {
+        df_info <- NULL
+    }
+
+    # Handling color_var
+    if (! is.null(color_var)) {
+        df_color <- df[, color_var]
+    } else {
+        df_color <- NULL
+    }
+
+    #=== Plot Xbar chart
+    p1 <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
+        info_names = info_names, df_color = df_color, center= Xdbar, UCL= UCLx,
+        LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
+        legend = legend, color_set = color_set)
+
+    #=== Plot mR chart
+    p2 <- Plotly_spc(df[[x_var]], df$mR, xlab, ylab_mR, df_info = df_info,
+        info_names = info_names, df_color = df_color,center= mRbar, UCL= UCLmr,
+        LCL= LCLmr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
+        legend = F, color_set = color_set)
+
+    #=== Plot R chart
+    if (R_chart) {
+        p3 <- Plotly_spc(df[[x_var]], df$R, xlab, ylab_R, df_info = df_info,
+            info_names = info_names, df_color = df_color, center= Rbar, UCL= UCLr,
+            LCL= LCLr, oo_limits = TRUE,  violate_runs = FALSE, zoneStrip= FALSE,
+            legend = F, color_set = color_set)
+
+        # Merge plots
+        p <- subplot(p1, p2, p3, nrows = 3,  heights = c(0.4, 0.3, 0.3),
+                     shareX = TRUE, titleY = TRUE) %>%
+            plotly::layout(title = title, margin = list(l = 100),
+                           yaxis= list(tickprefix= " "))
+    } else {
+        # Merge plots without R chart
+        p <- subplot(p1, p2, nrows = 2,  heights = c(0.6, 0.4),
+                     shareX = TRUE, titleY = TRUE) %>%
+            plotly::layout(title = title, margin = list(l = 100),
+                           yaxis= list(tickprefix= " "))
+    }
+
+    p
+}
+
+#' @title X-mR chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable names for x-axis
+#' @param y_var character, variable names for y-axis
+#' @param info_var character vector, variables for hover text
+#' @param color_var character, variable of coloring points
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param control_limits information of control limits of Xbar-R chart: CLx, CLmr, UCLx,
+#'        LCLx, UCLmr, LCLmr
+#' @param xlab x-axis label
+#' @param ylab_X y-axis label for X chart
+#' @param ylab_mR y-axis label for mR chart
+#' @param title title
+#' @param mR_chart logic, TRUE to include mR chart, FALSE for X chart only
+#' @param legend logic, TRUE to show legend on plot
+#' @param color_set custom color set
+#' @param zoneStrip logic, TRUE to show zone strip lines
+#' @return SPC chart by plotly
+#' @export
+X_mR <- function(df, x_var, y_var, info_var= NULL, color_var = NULL,
+    info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "X", ylab_mR= "mR",
+    title= "", mR_chart= TRUE, legend= TRUE, color_set= "Set1", zoneStrip= TRUE) {
+
+    # Handling xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # Process input df for plotting
+    # Arrange df by x-variable and then count moving average
+    # ????
+    df <-df %>% arrange(eval(parse(text = x_var))) %>%
+        mutate(X= eval(parse(text = y_var)),
+               mR = abs(eval(parse(text = y_var)) - lag(eval(parse(text = y_var)))))
+
+    # Remove the first row since mR is NA
+    df <- df[-1, ]
+
+    # Get center lines and control limits
+    if (is.null(control_limits)) {
+        cl <- cl_X_mR(df[[y_var]])
+        Xdbar <- cl$CLx
+        mRbar <- cl$CLmr
+        UCLx <- cl$UCLx
+        LCLx <- cl$LCLx
+        UCLmr <- cl$UCLmr
+        LCLmr <- cl$LCLmr
+    } else {
+        Xdbar <- control_limits$CLx
+        mRbar <- control_limits$CLmr
+        UCLx <- control_limits$UCLx
+        LCLx <- control_limits$LCLx
+        UCLmr <- control_limits$UCLmr
+        LCLmr <- control_limits$LCLmr
+    }
+
+    # Handling info_var and info_names
+    if (! is.null(info_var)) {
+        # info_var
+        if (is.null(info_names)) {
+            info_names <- names(info_var)
+        } else {
+            # check the length of info_var equal to info_names
+            if (length(info_names) != length(info_var)) {
+                stop("infor_var and info_names are not equal length.")
+            }
+        }
+
+        # df_info
+        df_info <- df[, info_var]
+    } else {
+        df_info <- NULL
+    }
+
+    # Handling color_var
+    if (! is.null(color_var)) {
+        df_color <- df[, color_var]
+    } else {
+        df_color <- NULL
+    }
+
+    #=== Plot X chart
+    p <- Plotly_spc(df[[x_var]], df$X, xlab, ylab_X, df_info = df_info,
+        info_names = info_names, df_color = df_color, center= Xdbar, UCL= UCLx,
+        LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
+        legend = legend, color_set = color_set)
+
+    #=== Plot mR chart
+    if (mR_chart) {
+        p2 <- Plotly_spc(df[[x_var]], df$mR, xlab, ylab_mR, df_info = df_info,
+            info_names = info_names, df_color = df_color, center = mRbar, UCL = UCLmr,
+            LCL= LCLmr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
+            legend = F, color_set = color_set)
+
+        # Merge plots
+        p <- subplot(p, p2, nrows = 2,  heights = c(0.6, 0.4),
+                     shareX = TRUE, titleY = TRUE) %>%
+            plotly::layout(title = title, margin = list(l = 100),
+                           yaxis= list(tickprefix= " "))
+    }
+    p
+}
+
+#' @title Xbar-s chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable names for x-axis
+#' @param y_var character, variable names for y-axis
+#' @param info_var character vector, variables for hover text
+#' @param group_var character vector form the smaple id
+#' @param color_var character, variable of coloring points
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param control_limits information of control limits of Xbar-R chart: CLx, CLs, UCLx,
+#'        LCLx, UCLs, LCLs
+#' @param xlab x-axis label
+#' @param ylab_X y-axis label for Xbar chart
+#' @param ylab_s y-axis label for s chart
+#' @param title title
+#' @param legend logic, TRUE to show legend on plot
+#' @param color_set custom color set
+#' @param zoneStrip logic, TRUE to show zone strip lines
+#' @return SPC chart by plotly
+#' @export
+Xbar_s <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var = NULL,
+    info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "Xbar", ylab_s= "s",
+    title= "", legend= TRUE, color_set= "Set1", zoneStrip= TRUE) {
+
+    # Handling group_var
+    if (! is.null(group_var)) {
+        # Make sure group variables are character
+        for (col in group_var) df[, col] <- as.character(df[, col])
+    } else {
+        # if group_var is null, then df will be group_by x_var
+        group_var <- x_var
+    }
+
+    # Handling xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # Process input df for plotting
+    # Get center lines and control limits
+    if (is.null(control_limits)) {
+        sample <- df %>% select(group_var) %>% unite("sample_id")
+        cl <- cl_Xbar_s(df[[y_var]], sample)
+        Xdbar <- cl$CLx
+        Sbar <- cl$CLs
+        UCLx <- cl$UCLx
+        LCLx <- cl$LCLx
+        UCLs <- cl$UCLs
+        LCLs <- cl$LCLs
+        #...
+    } else {
+        Xdbar <- control_limits$CLx
+        Sbar <- control_limits$CLr
+        UCLx <- control_limits$UCLx
+        LCLx <- control_limits$LCLx
+        UCLs <- control_limits$UCLs
+        LCLs <- control_limits$LCLs
+    }
+
+    # dataframe for join after summarized df to Xbar and R
+    df_join <- select(df, unique(c(x_var, info_var, group_var, color_var)))
+    df_join <- filter(df_join, ! duplicated(df_join))
+
+    # Count Xbar and sigma
+    df <- df %>%
+        group_by_at(group_var) %>%
+        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
+                  s = sd(eval(parse(text = y_var)), na.rm = TRUE), # standard deviation
+                  size = n()) %>%
+        as.data.frame(.) %>%
+        left_join(df_join, by= group_var) %>%
+        arrange(eval(parse(text = x_var)))
+
+    # Handling info_var and info_names
+    if (! is.null(info_var)) {
+        # info_var
+        if (is.null(info_names)) {
+            info_names <- names(info_var)
+        } else {
+            # check the length of info_var equal to info_names
+            if (length(info_names) != length(info_var)) {
+                stop("infor_var and info_names are not equal length.")
+            }
+        }
+
+        # df_info
+        df_info <- df[, info_var]
+    } else {
+        df_info <- NULL
+    }
+
+    # Handling color_var
+    if (! is.null(color_var)) {
+        df_color <- df[, color_var]
+    } else {
+        df_color <- NULL
+    }
+
+    #=== Plot Xbar chart
+    p1 <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
+        info_names = info_names, df_color = df_color, center= Xdbar, UCL= UCLx,
+        LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
+        legend = F, color_set = color_set)
+
+    #=== Plot s chart
+    p2 <- Plotly_spc(df[[x_var]], df$s, xlab, ylab_s, df_info = df_info,
+        info_names = info_names, df_color= df_color, center= Rbar, UCL= UCLr,
+        LCL= LCLr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
+        legend = F, color_set = color_set)
+
+    # Merge plots
+    p <- subplot(p1, p2, nrows = 2,  heights = c(0.6, 0.4),
+                 shareX = TRUE, titleY = TRUE) %>%
+        plotly::layout(title = title, margin = list(l = 100),
+                       yaxis= list(tickprefix= " "))
+    p
+}
+
+#' @title p/np chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable name for x-axis
+#' @param y_var character, variable name for y-axis, e.g. defect counts
+#' @param size_var character, variable name for sample size
+#' @param info_var character vector, variables for hover text
+#' @param color_var character, variable of coloring points, should be in info_var
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param center_line center of control chart
+#' @param xlab x-axis label
+#' @param ylab y-axis label
+#' @param title title
+#' @param ppm logic, TRUE for scale by ppm
+#' @param np_chart logic, TRUE for changing chart to np-chart
+#' @param ruleVarySize rule of varying sample size, by percentage
+#' @param legend logic, TRUE to show legend on plot
+#' @param color_set custom color set
+#' @return SPC chart by plotly
+#' @export
+p_chart <- function(df, x_var, y_var, size_var, info_var= NULL, color_var = NULL,
+    info_names= NULL,  center_line= NULL, xlab= NULL,  ylab= NULL, title= "",
+    ppm= FALSE, np_chart= FALSE, ruleVarySize= 0.1, legend= FALSE, color_set= "Set1") {
+
+    # np-chart force ppm to FALSE
+    if (np_chart) ppm <- FALSE
+
+    # Handling xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # Process input df for plotting
+    # Rename columns of df
+    colNames <- names(df)
+    colNames[colNames == x_var] <- "x"
+    colNames[colNames == y_var] <- "y"
+    colNames[colNames == size_var] <- "size"
+    names(df) <- colNames
+
+    # Form data frame and arrange by x-variable
+    df <- df %>%
+        mutate(frac = y / size) %>%
+        arrange(x)
+
+    # Handling info_var and info_names
+    if (! is.null(info_var)) {
+        # info_var
+        if (is.null(info_names)) {
+            info_names <- names(info_var)
+        } else {
+            # check the length of info_var equal to info_names
+            if (length(info_names) != length(info_var)) {
+                stop("infor_var and info_names are not equal length.")
+            }
+        }
+
+        # df_info
+        df_info <- df[, info_var]
+    } else {
+        df_info <- NULL
+    }
+
+    # Handling color_var
+    if (! is.null(color_var)) {
+        df_color <- df[, color_var]
+    } else {
+        df_color <- NULL
+    }
+
+    # Get center lines and control limits
+    if (! np_chart) {
+        y <- df$frac
+        if (!is.null(center_line)) {
+            pbar <- center_line
+            if (ppm) pbar <- pbar / 10^6
+        } else {
+            pbar <- NULL
+        }
+        cl <- cl_p(df$y, df$size, pbar, ruleVarySize)
+        UCL <- cl$UCL
+        LCL <- cl$LCL
+        CL <- cl$CL
+
+        # If data is in form of ppm
+        if (ppm) {
+            y <- 10^6 * df$frac
+            CL <- 10^6 * CL
+            UCL <- 10^6 * UCL
+            LCL <- 10^6 * LCL
+            if (is.null(ylab)) ylab <- "p(ppm)"
+        } else {
+            if (is.null(ylab)) ylab <- "p"
+        }
+    } else {
+        y <- df$y
+        if (is.null(center_line)) {
+            npbar <- NULL
+        } else {
+            npbar <- center_line
+        }
+
+        cl <- cl_np(df$y, df$size, npbar, ruleVarySize)
+        UCL <- cl$UCL
+        LCL <- cl$LCL
+        CL <- cl$CL
+        if (is.null(ylab)) ylab <- "np"
+    }
+
+    # generate chart
+    p <- Plotly_spc(df$x, y, xlab, ylab, df_info = df_info,
+        info_names = info_names, df_color= df_color, center= CL, UCL= UCL, LCL= LCL,
+        oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE, legend = legend,
+        color_set = color_set) %>%
+        plotly::layout(title = title, margin = list(l = 100),
+                       yaxis= list(tickprefix= " "))
+    p
+}
+
+#' @title u/c chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable name for x-axis
+#' @param y_var character, variable name for y-axis, e.g. defect counts
+#' @param size_var character, variable name for sample size
+#' @param iu unit per inspection
+#' @param info_var character vector, variables for hover text
+#' @param color_var character, variable of coloring points, should be in info_var
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param center_line center of control chart
+#' @param xlab x-axis label
+#' @param ylab y-axis label
+#' @param title title
+#' @param c_chart logic, TRUE for c-chart
+#' @param ruleVarySize rule of varying sample size, by percentage
+#' @param legend logic, TRUE to show legend on plot
+#' @param color_set custom color set
+#' @return SPC chart by plotly
+#' @export
+u_chart <- function(df, x_var, y_var, size_var, iu= NULL, info_var= NULL,
+    color_var = NULL, info_names= NULL, center_line= NULL, xlab= NULL, ylab= NULL,
+    title= "", c_chart= FALSE, ruleVarySize= 0.1, legend= FALSE, color_set= "Set1") {
+
+    # iu, inspection unit is required for u-chart
+    if (! c_chart) {
+        if (is.null(iu)) stop("Inspection unit, iu, is required!")
+    }
+
+    # Handling xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # Process input df for plotting
+    # Rename columns of df
+    colNames <- names(df)
+    colNames[colNames == x_var] <- "x"
+    colNames[colNames == y_var] <- "y"
+    colNames[colNames == size_var] <- "size"
+    names(df) <- colNames
+
+    # Form dataframe
+    df <- df %>%
+        mutate(No_iu = size / iu, u = y / No_iu) %>%
+        arrange(x)
+
+    # Handling info_var and info_names
+    if (! is.null(info_var)) {
+        # info_var
+        if (is.null(info_names)) {
+            info_names <- names(info_var)
+        } else {
+            # check the length of info_var equal to info_names
+            if (length(info_names) != length(info_var)) {
+                stop("infor_var and info_names are not equal length.")
+            }
+        }
+
+        # df_info
+        df_info <- df[, info_var]
+    } else {
+        df_info <- NULL
+    }
+
+    # Handling color_var
+    if (! is.null(color_var)) {
+        df_color <- df[, color_var]
+    } else {
+        df_color <- NULL
+    }
+
+    # Get center lines and control limits
+    if (! c_chart) {
+        y <- df$u
+        if (!is.null(center_line)) {
+            ubar <- center_line
+        } else {
+            ubar <- NULL
+        }
+        cl <- cl_u(df$y, df$size, iu, ubar, ruleVarySize)
+        UCL <- cl$UCL
+        LCL <- cl$LCL
+        CL <- cl$CL
+        if (is.null(ylab)) ylab <- "u"
+    } else {
+        y <- df$y
+        if (is.null(center_line)) {
+            cbar <- NULL
+        } else {
+            cbar <- center_line
+        }
+
+        cl <- cl_c(df$y, df$size, cbar, ruleVarySize)
+        UCL <- cl$UCL
+        LCL <- cl$LCL
+        CL <- cl$CL
+        if (is.null(ylab)) ylab <- "c"
+    }
+
+    # generate chart
+    p <- Plotly_spc(df$x, y, xlab, ylab, df_info = df_info,
+        info_names = info_names, df_color= df_color, center= CL, UCL= UCL, LCL= LCL,
+        oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE, legend = legend,
+        color_set = color_set) %>%
+        plotly::layout(title = title, margin = list(l = 100),
+                       yaxis= list(tickprefix= " "))
+    p
+}
+
+# * cusum chart.....
+#' @title plot cusum chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable names for x-axis
+#' @param y_var character, variable names for y-axis
+#' @param info_var character vector, variables for hover text
+#' @param group_var character vector form the smaple id, should be in info_var.
+#'        If NULL, each row represent a sample.
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param sizes value, sample size of per group, if null, counted by group_by
+#' @param center value, center of control chart or group statistic, if null, counted by
+#'        input data
+#' @param stDev within-group standard deviation, if null, counted by input data
+#' @param decision_interval numeric value, specify the number of standard error of the
+#'        summary statistics at which the cumulative sum is out of control
+#' @param se_shift the amount of shift to detect in the process, measured in standard
+#'        error of the summary statistics
+#' @param xlab x-axis label
+#' @param ylab y-axis label
+#' @param title title
+#' @return list contains: cusum chart, decision interval, standard error shift,
+#'         points of rule violated low and hight
+#' @export
+cusum_chart <- function (df, x_var, y_var, info_var= NULL, group_var= NULL,
+    info_names= NULL, sizes= NULL, center= NULL, stDev= NULL, decision_interval = 5,
+    se_shift = 1, xlab= NULL, ylab= "Cumulative Sum", title= "Cusum Chart") {
+
+    # xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # info_var
+    if (! is.null(info_var)) {
+        if (is.null(info_names)) info_names <- names(info_var)
+        names(info_names) <- names(info_var)
+    } else {
+        info_names <- NULL
+    }
+
+    # Process input df for plotting
+    # Rename columns of df
+    colNames <- names(df)
+    colNames[colNames == x_var] <- "x"
+    colNames[colNames == y_var] <- "y"
+    names(df) <- colNames
+
+    # Count statistics: center, within-group stDev...
+    if (is.null(group_var)) {
+        data_y <- df[["y"]]
+        if (is.null(sizes)) sizes <- 1
+        if (is.null(center) | is.null(stDev)) {
+            cl <- cl_X_mR(data_y)
+            if (is.null(center)) center <- cl$CLx
+            if (is.null(stDev)) stDev <- cl$sd
+        }
+    } else {
+        # Make sure group variables are character
+        for (col in group_var) df[, col] <- as.character(df[, col])
+
+        # Get mean and stDev
+        if (is.null(center) | is.null(stDev)) {
+            sample <- df %>% select(group_var) %>% unite("sample_id")
+            cl <- cl_Xbar_R(df[["y"]], sample)
+            if (is.null(center)) center <- cl$CLx
+            if (is.null(stDev)) stDev <- cl$sd
+        }
+
+        # dataframe for join after summarized df to Xbar and R
+
+        dfo <- df
+
+        df <- arrange(df, x)
+
+        df_join <- select(df, c("x", info_var))
+        df_join <- filter(df_join, ! duplicated(df_join))
+        df <- df %>%
+            group_by_at(group_var) %>%
+            summarise(Xbar = mean(y, na.rm = TRUE), Size= n()) %>%
+            as.data.frame(.) %>%
+            left_join(., df_join, by= group_var) %>%
+            arrange(x)
+        if (is.null(sizes)) sizes <- ceiling(mean(df$Size, na.rm = TRUE))
+        data_y <- df$Xbar
+
+    }
+
+    #... Count cusum
+    cusumx <- cusum(data_y, sizes, center, stDev, decision.interval= decision_interval,
+                    se.shift= se_shift, plot = FALSE)
+
+    #... plot
+    p <- Plotly_cusum(x= df$x, cusumx, df_info= df[, info_var],
+                      info_names, xlab = xlab,
+                      ylab= "Cumulative Sum", title= "Cusum Chart")
+
+    # Return
+    list(p= p, decision_interval= cusumx$decision.interval, se_shift= cusumx$se.shift,
+         violation_low= cusumx$violations$lower,
+         violation_high=  cusumx$violations$upper)
+}
+
+# * cusum chart.....
+#' @title plot cusum chart
+#' @param df dataframe for plotting, including x, y variables and other variables for
+#'           grouping, coloring and hover text.
+#' @param x_var character, variable names for x-axis
+#' @param y_var character, variable names for y-axis
+#' @param info_var character vector, variables for hover text
+#' @param group_var character vector form the smaple id, should be in info_var.
+#'        If NULL, each row represent a sample.
+#' @param info_names character vector, with the same length of info_var, to replace the
+#'        names of info_var for more meaning text for hover text
+#' @param sizes value, sample size of per group, if null, counted by group_by
+#' @param center value, center of control chart or group statistic, if null, counted by
+#'        input data
+#' @param stDev within-group standard deviation, if null, counted by input data
+#' @param lambda the smoothing parameter
+#' @param nsigmas the number of sigmas for computing control limits
+#' @param xlab x-axis label
+#' @param ylab y-axis label
+#' @param title title
+#' @return list contains: cusum chart, lambda, nsigamas, points of rule violated
+#' @export
+ewma_chart <- function (df, x_var, y_var, info_var= NULL, group_var= NULL,
+    info_names= NULL, sizes= NULL, center= NULL, stDev= NULL, lambda= 0.2,
+    nsigmas= 3, xlab= NULL, ylab= "EWMA", title= "EWMN Chart") {
+
+    # xlab
+    if (is.null(xlab)) xlab <- x_var
+
+    # info_var
+    if (! is.null(info_var)) {
+        if (is.null(info_names)) info_names <- names(info_var)
+        names(info_names) <- names(info_var)
+    } else {
+        info_names <- NULL
+    }
+
+    # Process input df for plotting
+    # Rename columns of df
+    colNames <- names(df)
+    colNames[colNames == x_var] <- "x"
+    colNames[colNames == y_var] <- "y"
+    names(df) <- colNames
+
+    # Count statistics: center, within-group stDev...
+    if (is.null(group_var)) {
+        data_y <- df[["y"]]
+        if (is.null(sizes)) sizes <- 1
+        if (is.null(center) | is.null(stDev)) {
+            cl <- cl_X_mR(data_y)
+            if (is.null(center)) center <- cl$CLx
+            if (is.null(stDev)) stDev <- cl$sd
+        }
+    } else {
+        # Make sure group variables are character
+        for (col in group_var) df[, col] <- as.character(df[, col])
+
+        # Get mean and stDev
+        if (is.null(center) | is.null(stDev)) {
+            sample <- df %>% select(group_var) %>% unite("sample_id")
+            cl <- cl_Xbar_R(df[["y"]], sample)
+            if (is.null(center)) center <- cl$CLx
+            if (is.null(stDev)) stDev <- cl$sd
+        }
+
+        # dataframe for join after summarized df to Xbar and R
+
+        dfo <- df
+
+        df <- arrange(df, x)
+
+        df_join <- select(df, c("x", info_var))
+        df_join <- filter(df_join, ! duplicated(df_join))
+        df <- df %>%
+            group_by_at(group_var) %>%
+            summarise(Xbar = mean(y, na.rm = TRUE), Size= n()) %>%
+            as.data.frame(.) %>%
+            left_join(., df_join, by= group_var) %>%
+            arrange(x)
+        if (is.null(sizes)) sizes <- ceiling(mean(df$Size, na.rm = TRUE))
+        data_y <- df$Xbar
+
+    }
+
+    #... Count ewma
+    ewmax <- ewma(data_y, sizes, center,  stDev, lambda= lambda, nsigmas= nsigmas,
+                  plot= FALSE)
+
+    #... plot
+    p <- Plotly_ewma(df$x, ewmax, df_info= df[, info_var], info_names,
+                     xlab= xlab, ylab= ylab, title= title)
+    p
+
+    #...
+    list(p= p, lambda= ewmax$lambda, nsigmas= ewmax$nsigmas, vilations= ewmax$violations)
+}
