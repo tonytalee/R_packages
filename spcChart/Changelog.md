@@ -13,6 +13,7 @@
 ### Changed
 
 - release the constrains of group_var and color_var must be in info_var
+- spc chart return a list contains spc chart, df with ooc labels and df with original info
 
 ## [0.2.0] - 2018-11-10
 

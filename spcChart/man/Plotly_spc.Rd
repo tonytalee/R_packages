@@ -41,7 +41,7 @@ Plotly_spc(x, y, xlab = NULL, ylab = NULL, df_info = NULL,
 \item{color_set}{custom color set for plotting}
 }
 \value{
-plotly spc chart
+list contains plotly spc chart, and dataframe with ooc labels
 }
 \description{
 Plotly SPC chart

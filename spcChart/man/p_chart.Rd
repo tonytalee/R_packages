@@ -45,7 +45,7 @@ names of info_var for more meaning text for hover text}
 \item{color_set}{custom color set}
 }
 \value{
-SPC chart by plotly
+list contains spc chart, df with ooc labels and df with original info
 }
 \description{
 p/np chart

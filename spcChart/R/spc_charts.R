@@ -1,5 +1,31 @@
 # version 0.2.1
 
+#' @title Calculate Xbar, R, s and mR
+#' @param df dataframe for calculating Xbar, R, s and mR
+#' @param x_var character, variable names for x-axis
+#' @param y_var character, variable names for y-axis
+#' @param group_var character vector form the smaple id
+#' @param info_var character vector, variables for hover text
+#' @param color_var character, variable of coloring points
+#' @return dataframe with summarized xbar, R, s and mR
+Df_cal_xbar <- function(df, x_var, y_var, group_var, info_var, color_var) {
+    # Handling group_var
+    group_var <- unique(c(x_var, group_var, info_var, color_var))
+    for (col in group_var) df[, col] <- as.character(df[, col])
+
+    # Count Xbar, R, s and mR
+    df %>%
+        group_by_at(group_var) %>%
+        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
+                  s = sd(eval(parse(text = y_var)), na.rm = TRUE), # standard deviation
+                  R = max(eval(parse(text = y_var)), na.rm = TRUE) -
+                      min(eval(parse(text = y_var)), na.rm = TRUE), # range
+                  size = n()) %>%
+        as.data.frame(.) %>%
+        arrange(eval(parse(text = x_var))) %>%
+        mutate(mR = abs(Xbar - lag(Xbar)))
+}
+
 #=== Plot function =====
 #' @title Plotly SPC chart
 #' @param x vector of x- data
@@ -17,7 +43,7 @@
 #' @param zoneStrip TRUE is want plot strip line for zone A, B, C
 #' @param legend TRUE is want to show legend on plot
 #' @param color_set custom color set for plotting
-#' @return plotly spc chart
+#' @return list contains plotly spc chart, and dataframe with ooc labels
 
 Plotly_spc <- function(x, y, xlab= NULL, ylab= NULL, df_info= NULL, info_names= NULL,
     df_color= NULL, center= NULL, UCL= NULL, LCL= NULL, oo_limits= TRUE,
@@ -35,7 +61,6 @@ Plotly_spc <- function(x, y, xlab= NULL, ylab= NULL, df_info= NULL, info_names= 
     } else {
         info_names <- c(xlab, ylab)
     }
-    df <- df %>% filter(!is.na(y))
 
     # hover text on SPC points
     df$y <- round(df$y, 3)
@@ -46,20 +71,14 @@ Plotly_spc <- function(x, y, xlab= NULL, ylab= NULL, df_info= NULL, info_names= 
     df <- select(df, x, y)
 
     # Set color map for ooc
-    color_map <- c(normal= "steelblue", ool= "red", violate= "orange")
+    color_map <- c(normal= "steelblue", above= "red", below= "red", violate= "orange")
 
     # Add variable for marking normal, oo_limits and violate_runs
-    if (! is.null(df_color)) {
-        oo_limits <- FALSE
-        violate_runs <- FALSE
-    }
     df$label <- "normal"
-    if (oo_limits & !is.null(LCL[1] & !is.null(UCL[1])))
-        { df$label[which(df$y > UCL | df$y < LCL)] <- "ool" }
-    if (violate_runs) {
-        df$label[violating.runs(list(statistics= df$y, center= center, cl= NULL))] <-
-            "violate"
-    }
+    if (! is.null(UCL[1])) df$label[which(df$y > UCL)] <- "above"
+    if (! is.null(LCL[1])) df$label[which(df$y < LCL)] <- "below"
+    df$label[violating.runs(list(statistics= df$y, center= center, cl= NULL))] <-
+        "violate"
 
     # Set x, y corrdinates limits
     ymax <- max(c(df$y, UCL), na.rm = TRUE)
@@ -153,7 +172,7 @@ Plotly_spc <- function(x, y, xlab= NULL, ylab= NULL, df_info= NULL, info_names= 
                xaxis = list(title= xlab, zeroline = FALSE, showline = FALSE,
                             showticklabels = FALSE, showgrid = FALSE),
                yaxis = style_yaxis)
-    p
+    list(p = p, df = df)
 }
 
 #--- Cusum plotly
@@ -329,7 +348,7 @@ Plotly_ewma <- function(x, ewmax, df_info= NULL, info_names= NULL,
 #' @param legend logic, TRUE to show legend on plot
 #' @param color_set custom color set
 #' @param zoneStrip logic, TRUE to show zone strip lines
-#' @return SPC chart by plotly
+#' @return list contains spc chart, df with ooc labels and df with original info
 #' @export
 Xbar_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var = NULL,
     info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "Xbar", ylab_R= "R",
@@ -369,20 +388,8 @@ Xbar_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var 
         LCLr <- control_limits$LCLr
     }
 
-    # dataframe for join after summarized df to Xbar and R
-    df_join <- select(df, unique(c(x_var, info_var, group_var, color_var)))
-    df_join <- filter(df_join, ! duplicated(df_join))
-
     # Count Xbar and R
-    df <- df %>%
-        group_by_at(group_var) %>%
-        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
-                  R = max(eval(parse(text = y_var)), na.rm = TRUE) -
-                      min(eval(parse(text = y_var)), na.rm = TRUE), # range
-                  size = n()) %>%
-        as.data.frame(.) %>%
-        left_join(df_join, by= group_var) %>%
-        arrange(eval(parse(text = x_var)))
+    df <- Df_cal_xbar(df, x_var, y_var, group_var, info_var, color_var)
 
     # Handling info_var and info_names
     if (! is.null(info_var)) {
@@ -410,26 +417,33 @@ Xbar_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var 
     }
 
     #=== Plot Xbar chart
-    p <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
+    li <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
         info_names = info_names, df_color= df_color, center= Xdbar, UCL= UCLx,
         LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
         legend = legend, color_set = color_set)
+    p <- li$p
+    df_xbar <- li$df
 
     #=== Plot R chart
     if (R_chart) {
-        p2 <- Plotly_spc(df[[x_var]], df$R, xlab, ylab_R, df_info = df_info,
+        li <- Plotly_spc(df[[x_var]], df$R, xlab, ylab_R, df_info = df_info,
             info_names = info_names, df_color= df_color, center= Rbar, UCL= UCLr,
             LCL= LCLr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
             legend = F, color_set = color_set)
+        p2 <- li$p
+        df_r <- li$df
         # Merge plots
         p <- subplot(p, p2, nrows = 2,  heights = c(0.6, 0.4),
                      shareX = TRUE, titleY = TRUE) %>%
             plotly::layout(title = title, margin = list(l = 100),
                            yaxis= list(tickprefix= " "))
+    } else {
+        df_r <- NULL
     }
 
     # Return
-    p
+    list(p = p, df_xbar = df_xbar, df_r = df_r,
+         dfi = df[, unique(c(group_var, info_var, color_var))])
 }
 
 #' @title Xbar-mR-R chart
@@ -437,7 +451,7 @@ Xbar_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var 
 #'        UCLx, LCLx, UCLr, LCLr, UCLmr, LCLmr
 #' @param ylab_mR y label of mR chart
 #' @inheritParams Xbar_R
-#' @return SPC chart by plotly
+#' @return list contains spc chart, df with ooc labels and df with original info
 #' @export
 Xbar_mR_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var = NULL,
     info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "Xbar", ylab_mR= "mR",
@@ -485,21 +499,8 @@ Xbar_mR_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_v
         LCLmr <- control_limits$LCLmr
     }
 
-    # dataframe for join after summarized df to Xbar, mR and R
-    df_join <- select(df, unique(c(x_var, info_var, group_var, color_var)))
-    df_join <- filter(df_join, ! duplicated(df_join))
-
-    # Count Xbar and R
-    df <- df %>%
-        group_by_at(group_var) %>%
-        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
-                  R = max(eval(parse(text = y_var)), na.rm = TRUE) -
-                      min(eval(parse(text = y_var)), na.rm = TRUE), # range
-                  size = n()) %>%
-        as.data.frame(.) %>%
-        left_join(df_join, by= group_var) %>%
-        arrange(eval(parse(text = x_var))) %>%
-        mutate(mR = abs(Xbar - lag(Xbar)))
+    # Count Xbar, R, s and mR
+    df <- Df_cal_xbar(df, x_var, y_var, group_var, info_var, color_var)
 
     # Remove the first row since mR is NA
     df <- df[-1, ]
@@ -539,23 +540,29 @@ Xbar_mR_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_v
     }
 
     #=== Plot Xbar chart
-    p1 <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
+    li <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
         info_names = info_names, df_color = df_color, center= Xdbar, UCL= UCLx,
         LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
         legend = legend, color_set = color_set)
+    p1 <- li$p
+    df_xbar <- li$df
 
     #=== Plot mR chart
-    p2 <- Plotly_spc(df[[x_var]], df$mR, xlab, ylab_mR, df_info = df_info,
+    li <- Plotly_spc(df[[x_var]], df$mR, xlab, ylab_mR, df_info = df_info,
         info_names = info_names, df_color = df_color,center= mRbar, UCL= UCLmr,
         LCL= LCLmr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
         legend = F, color_set = color_set)
+    p2 <- li$p
+    df_mr <- li$df
 
     #=== Plot R chart
     if (R_chart) {
-        p3 <- Plotly_spc(df[[x_var]], df$R, xlab, ylab_R, df_info = df_info,
+        li <- Plotly_spc(df[[x_var]], df$R, xlab, ylab_R, df_info = df_info,
             info_names = info_names, df_color = df_color, center= Rbar, UCL= UCLr,
             LCL= LCLr, oo_limits = TRUE,  violate_runs = FALSE, zoneStrip= FALSE,
             legend = F, color_set = color_set)
+        p3 <- li$p
+        df_r <- li$df
 
         # Merge plots
         p <- subplot(p1, p2, p3, nrows = 3,  heights = c(0.4, 0.3, 0.3),
@@ -568,9 +575,11 @@ Xbar_mR_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_v
                      shareX = TRUE, titleY = TRUE) %>%
             plotly::layout(title = title, margin = list(l = 100),
                            yaxis= list(tickprefix= " "))
+        df_r <- NULL
     }
 
-    p
+    list(p = p, df_xbar = df_xbar, df_mr = df_mr, df_r = df_r,
+         dfi = df[, unique(c(group_var, info_var, color_var))])
 }
 
 #' @title X-mR chart
@@ -592,7 +601,7 @@ Xbar_mR_R <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_v
 #' @param legend logic, TRUE to show legend on plot
 #' @param color_set custom color set
 #' @param zoneStrip logic, TRUE to show zone strip lines
-#' @return SPC chart by plotly
+#' @return list contains spc chart, df with ooc labels and df with original info
 #' @export
 X_mR <- function(df, x_var, y_var, info_var= NULL, color_var = NULL,
     info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "X", ylab_mR= "mR",
@@ -655,25 +664,33 @@ X_mR <- function(df, x_var, y_var, info_var= NULL, color_var = NULL,
     }
 
     #=== Plot X chart
-    p <- Plotly_spc(df[[x_var]], df$X, xlab, ylab_X, df_info = df_info,
+    li <- Plotly_spc(df[[x_var]], df$X, xlab, ylab_X, df_info = df_info,
         info_names = info_names, df_color = df_color, center= Xdbar, UCL= UCLx,
         LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
         legend = legend, color_set = color_set)
+    p <- li$p
+    df_x <- li$df
 
     #=== Plot mR chart
     if (mR_chart) {
-        p2 <- Plotly_spc(df[[x_var]], df$mR, xlab, ylab_mR, df_info = df_info,
+        li <- Plotly_spc(df[[x_var]], df$mR, xlab, ylab_mR, df_info = df_info,
             info_names = info_names, df_color = df_color, center = mRbar, UCL = UCLmr,
             LCL= LCLmr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
             legend = F, color_set = color_set)
+        p2 <- li$p
+        df_mr<- li$df
 
         # Merge plots
         p <- subplot(p, p2, nrows = 2,  heights = c(0.6, 0.4),
                      shareX = TRUE, titleY = TRUE) %>%
             plotly::layout(title = title, margin = list(l = 100),
                            yaxis= list(tickprefix= " "))
+    } else {
+        df_mr <- NULL
     }
-    p
+
+    list(p = p, df_x = df_x, df_mr = df_mr,
+         dfi = df[, unique(c(info_var, color_var))])
 }
 
 #' @title Xbar-s chart
@@ -695,7 +712,7 @@ X_mR <- function(df, x_var, y_var, info_var= NULL, color_var = NULL,
 #' @param legend logic, TRUE to show legend on plot
 #' @param color_set custom color set
 #' @param zoneStrip logic, TRUE to show zone strip lines
-#' @return SPC chart by plotly
+#' @return list contains spc chart, df with ooc labels and df with original info
 #' @export
 Xbar_s <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var = NULL,
     info_names= NULL, control_limits= NULL, xlab= NULL, ylab_X= "Xbar", ylab_s= "s",
@@ -734,19 +751,8 @@ Xbar_s <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var 
         LCLs <- control_limits$LCLs
     }
 
-    # dataframe for join after summarized df to Xbar and R
-    df_join <- select(df, unique(c(x_var, info_var, group_var, color_var)))
-    df_join <- filter(df_join, ! duplicated(df_join))
-
-    # Count Xbar and sigma
-    df <- df %>%
-        group_by_at(group_var) %>%
-        summarise(Xbar = mean(eval(parse(text = y_var)), na.rm = TRUE),
-                  s = sd(eval(parse(text = y_var)), na.rm = TRUE), # standard deviation
-                  size = n()) %>%
-        as.data.frame(.) %>%
-        left_join(df_join, by= group_var) %>%
-        arrange(eval(parse(text = x_var)))
+    # Count Xbar, R, s and mR
+    df <- Df_cal_xbar(df, x_var, y_var, group_var, info_var, color_var)
 
     # Handling info_var and info_names
     if (! is.null(info_var)) {
@@ -774,23 +780,28 @@ Xbar_s <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var 
     }
 
     #=== Plot Xbar chart
-    p1 <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
+    li <- Plotly_spc(df[[x_var]], df$Xbar, xlab, ylab_X, df_info = df_info,
         info_names = info_names, df_color = df_color, center= Xdbar, UCL= UCLx,
         LCL= LCLx, oo_limits = TRUE, violate_runs = TRUE, zoneStrip= zoneStrip,
         legend = F, color_set = color_set)
+    p1 <- li$p
+    df_xbar <- li$df
 
     #=== Plot s chart
-    p2 <- Plotly_spc(df[[x_var]], df$s, xlab, ylab_s, df_info = df_info,
-        info_names = info_names, df_color= df_color, center= Rbar, UCL= UCLr,
-        LCL= LCLr, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
+    li <- Plotly_spc(df[[x_var]], df$s, xlab, ylab_s, df_info = df_info,
+        info_names = info_names, df_color= df_color, center= Sbar, UCL= UCLs,
+        LCL= LCLs, oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE,
         legend = F, color_set = color_set)
+    p2 <- li$p
+    df_s <- li$df
 
     # Merge plots
     p <- subplot(p1, p2, nrows = 2,  heights = c(0.6, 0.4),
                  shareX = TRUE, titleY = TRUE) %>%
         plotly::layout(title = title, margin = list(l = 100),
                        yaxis= list(tickprefix= " "))
-    p
+    list(p = p, df_xbar = df_xbar, df_s = df_s,
+         dfi = df[, unique(c(group_var, info_var, color_var))])
 }
 
 #' @title p/np chart
@@ -812,7 +823,7 @@ Xbar_s <- function(df, x_var, y_var, info_var= NULL, group_var= NULL, color_var 
 #' @param ruleVarySize rule of varying sample size, by percentage
 #' @param legend logic, TRUE to show legend on plot
 #' @param color_set custom color set
-#' @return SPC chart by plotly
+#' @return list contains spc chart, df with ooc labels and df with original info
 #' @export
 p_chart <- function(df, x_var, y_var, size_var, info_var= NULL, color_var = NULL,
     info_names= NULL,  center_line= NULL, xlab= NULL,  ylab= NULL, title= "",
@@ -901,14 +912,17 @@ p_chart <- function(df, x_var, y_var, size_var, info_var= NULL, color_var = NULL
         if (is.null(ylab)) ylab <- "np"
     }
 
-    # generate chart
-    p <- Plotly_spc(df$x, y, xlab, ylab, df_info = df_info,
+    # return a list with chart and df with ooc marked
+    li <- Plotly_spc(df$x, y, xlab, ylab, df_info = df_info,
         info_names = info_names, df_color= df_color, center= CL, UCL= UCL, LCL= LCL,
         oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE, legend = legend,
-        color_set = color_set) %>%
+        color_set = color_set)
+
+    p <- li$p %>%
         plotly::layout(title = title, margin = list(l = 100),
                        yaxis= list(tickprefix= " "))
-    p
+    list(p = p, df_p = li$df,
+         dfi = df[, unique(c(info_var, color_var))])
 }
 
 #' @title u/c chart
@@ -930,7 +944,7 @@ p_chart <- function(df, x_var, y_var, size_var, info_var= NULL, color_var = NULL
 #' @param ruleVarySize rule of varying sample size, by percentage
 #' @param legend logic, TRUE to show legend on plot
 #' @param color_set custom color set
-#' @return SPC chart by plotly
+#' @return list contains spc chart, df with ooc labels and df with original info
 #' @export
 u_chart <- function(df, x_var, y_var, size_var, iu= NULL, info_var= NULL,
     color_var = NULL, info_names= NULL, center_line= NULL, xlab= NULL, ylab= NULL,
@@ -1010,14 +1024,16 @@ u_chart <- function(df, x_var, y_var, size_var, iu= NULL, info_var= NULL,
         if (is.null(ylab)) ylab <- "c"
     }
 
-    # generate chart
-    p <- Plotly_spc(df$x, y, xlab, ylab, df_info = df_info,
+    # return a list with chart and df with ooc marked
+    li <- Plotly_spc(df$x, y, xlab, ylab, df_info = df_info,
         info_names = info_names, df_color= df_color, center= CL, UCL= UCL, LCL= LCL,
         oo_limits = TRUE, violate_runs = FALSE, zoneStrip= FALSE, legend = legend,
-        color_set = color_set) %>%
+        color_set = color_set)
+    p <- li$p %>%
         plotly::layout(title = title, margin = list(l = 100),
                        yaxis= list(tickprefix= " "))
-    p
+    list(p = p, df_u = li$df,
+         dfi = df[, unique(c(info_var, color_var))])
 }
 
 # * cusum chart.....
@@ -1218,3 +1234,4 @@ ewma_chart <- function (df, x_var, y_var, info_var= NULL, group_var= NULL,
     #...
     list(p= p, lambda= ewmax$lambda, nsigmas= ewmax$nsigmas, vilations= ewmax$violations)
 }
+

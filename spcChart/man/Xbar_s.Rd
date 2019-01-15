@@ -44,7 +44,7 @@ LCLx, UCLs, LCLs}
 \item{zoneStrip}{logic, TRUE to show zone strip lines}
 }
 \value{
-SPC chart by plotly
+list contains spc chart, df with ooc labels and df with original info
 }
 \description{
 Xbar-s chart
